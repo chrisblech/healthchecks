@@ -15,11 +15,12 @@ ARG MOZILLA_DJANGO_OIDC_VERSION=5.0.2
 RUN pip install --no-cache-dir --no-deps --target /addon \
     "mozilla-django-oidc==${MOZILLA_DJANGO_OIDC_VERSION}"
 
-COPY hc/accounts/oidc.py hc/accounts/oidc_settings.py /addon/hc_oidc/
+COPY hc/oidc /addon/hc_oidc
 COPY docker/oidc/settings.py /addon/hc_oidc/settings.py
 
 # The add-on volume is mounted read-only, so precompile the bytecode here
-RUN touch /addon/hc_oidc/__init__.py && \
+RUN rm -rf /addon/hc_oidc/tests && \
+    find /addon -name __pycache__ -prune -exec rm -rf {} + && \
     python -m compileall -q /addon && \
     chmod -R a+rX /addon
 

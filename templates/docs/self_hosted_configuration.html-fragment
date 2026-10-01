@@ -414,8 +414,10 @@ to an unmodified upstream Docker image, see <code>docker/oidc/README.md</code>.<
    <code>OIDC_PROVIDER_URL/.well-known/openid-configuration</code>
    (and refuse to start if this fails)</li>
 <li>show a "Log In with Single Sign-On" button on the login page</li>
-<li>log in the user with a matching email address after a successful
-   single sign-on</li>
+<li>link each user account to the user's identity at the provider (the <code>sub</code> claim):
+   on the first single sign-on, Healthchecks links the account with a matching
+   email address. From then on, it identifies the account by the <code>sub</code> claim only,
+   so another identity claiming the same email address cannot take it over</li>
 <li>automatically create a user account if it does not exist
    (unless <code>OIDC_CREATE_USER</code> is set to <code>False</code>)</li>
 <li>reject logins where the provider reports the email address as unverified
@@ -446,7 +448,15 @@ endpoint using HTTP Basic authentication instead of in the POST body.</dd>
 <dd>Default: <code>False</code>. Set to <code>True</code> to use PKCE (Proof Key for Code Exchange).</dd>
 <dt><code>OIDC_CREATE_USER</code></dt>
 <dd>Default: <code>True</code>. Set to <code>False</code> to only allow single sign-on for users
-who already have a Healthchecks account with a matching email address.</dd>
+who already have a Healthchecks account.</dd>
+<dt><code>OIDC_LINK_BY_EMAIL</code></dt>
+<dd>Default: <code>True</code>. Controls whether the first single sign-on of an existing user
+links their account by email address. Once all existing users have linked
+their accounts, you can set this to <code>False</code> to only accept already linked
+accounts (and, with <code>OIDC_CREATE_USER</code>, new users). Administrators can view
+and remove links in the Django admin site, under "OIDC identities". Links
+are stored per <code>OIDC_PROVIDER_URL</code> value, so after changing it, accounts get
+linked again.</dd>
 <dt><code>OIDC_ALLOW_UNVERIFIED_EMAIL</code></dt>
 <dd>Default: <code>False</code>. Set to <code>True</code> to also accept logins where the identity
 provider reports the email address as unverified. Only enable this if you

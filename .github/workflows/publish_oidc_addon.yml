@@ -11,8 +11,7 @@ on:
         branches: [feature/oidc]
         tags: ["oidc-addon-v*"]
         paths:
-            - hc/accounts/oidc.py
-            - hc/accounts/oidc_settings.py
+            - hc/oidc/**
             - docker/oidc/**
             - .github/workflows/publish_oidc_addon.yml
     workflow_dispatch:

@@ -572,8 +572,10 @@ When `OIDC_PROVIDER_URL` is set, Healthchecks will:
    `OIDC_PROVIDER_URL/.well-known/openid-configuration`
    (and refuse to start if this fails)
  - show a "Log In with Single Sign-On" button on the login page
- - log in the user with a matching email address after a successful
-   single sign-on
+ - link each user account to the user's identity at the provider (the `sub` claim):
+   on the first single sign-on, Healthchecks links the account with a matching
+   email address. From then on, it identifies the account by the `sub` claim only,
+   so another identity claiming the same email address cannot take it over
  - automatically create a user account if it does not exist
    (unless `OIDC_CREATE_USER` is set to `False`)
  - reject logins where the provider reports the email address as unverified
@@ -611,7 +613,16 @@ The following additional settings are available:
 
 `OIDC_CREATE_USER`
 :   Default: `True`. Set to `False` to only allow single sign-on for users
-    who already have a Healthchecks account with a matching email address.
+    who already have a Healthchecks account.
+
+`OIDC_LINK_BY_EMAIL`
+:   Default: `True`. Controls whether the first single sign-on of an existing user
+    links their account by email address. Once all existing users have linked
+    their accounts, you can set this to `False` to only accept already linked
+    accounts (and, with `OIDC_CREATE_USER`, new users). Administrators can view
+    and remove links in the Django admin site, under "OIDC identities". Links
+    are stored per `OIDC_PROVIDER_URL` value, so after changing it, accounts get
+    linked again.
 
 `OIDC_ALLOW_UNVERIFIED_EMAIL`
 :   Default: `False`. Set to `True` to also accept logins where the identity

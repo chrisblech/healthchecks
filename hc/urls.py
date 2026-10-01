@@ -52,4 +52,4 @@ urlpatterns = [
 ]
 
 if settings.OIDC_PROVIDER_URL:
-    urlpatterns.append(path(prefix, include("hc.accounts.oidc")))
+    urlpatterns.append(path(prefix, include("hc.oidc.urls")))

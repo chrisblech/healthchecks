@@ -102,6 +102,9 @@ INSTALLED_APPS = (
     "hc.api",
     "hc.front",
     "hc.logs",
+    # Optional OIDC support: unless OIDC_PROVIDER_URL is set, this app only
+    # provides an (unused) database table
+    "hc.oidc",
     "hc.payments",
     "hc.integrations.apprise",
     "hc.integrations.call",
@@ -290,7 +293,7 @@ else:
 OIDC_PROVIDER_URL = os.getenv("OIDC_PROVIDER_URL", "").removesuffix("/")
 OIDC_AUTO_LOGIN = False
 if OIDC_PROVIDER_URL:
-    from hc.accounts.oidc_settings import configure_oidc
+    from hc.oidc.conf import configure_oidc
 
     configure_oidc(globals())
 

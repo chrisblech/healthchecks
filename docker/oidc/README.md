@@ -17,10 +17,9 @@ as a one-shot container. It copies its contents into a named volume and exits:
 ```
 /opt/oidc/                      (named volume, mounted read-only into the app)
 ├── mozilla_django_oidc/        the mozilla-django-oidc library
-└── hc_oidc/
+└── hc_oidc/                    a copy of the hc/oidc package (without tests)
     ├── settings.py             docker/oidc/settings.py
-    ├── oidc_settings.py        hc/accounts/oidc_settings.py
-    └── oidc.py                 hc/accounts/oidc.py
+    └── ...                     backend, views, model and migrations
 ```
 
 The Healthchecks container mounts the volume and gets two environment variables:
@@ -32,8 +31,14 @@ The Healthchecks container mounts the volume and gets two environment variables:
 `hc_oidc.settings` imports all regular settings from `hc.settings`, adds the OIDC
 configuration, and routes requests through its own URL patterns (OIDC URLs plus
 the unmodified `hc.urls`). No file of the Healthchecks image is modified or
-overlaid. `oidc.py` and `oidc_settings.py` are the same files the full integration
-in this repository uses, so both share code, environment variables and behavior.
+overlaid. `hc_oidc` is the same package the full integration in this repository
+uses (`hc/oidc`), so both share code, environment variables and behavior.
+
+`hc_oidc` is also a Django app with its own database table (the links between
+user accounts and OIDC identities). The regular `manage.py migrate` run at
+container start creates it. The app label is the same in both setups, so you
+can switch between the add-on and an image built from this repository without
+losing the links.
 
 Consequences:
 

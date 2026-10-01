@@ -1,8 +1,7 @@
 """Django settings for running an unmodified Healthchecks image with OIDC support.
 
 This file is part of the OIDC add-on (see docker/oidc/README.md), where it is
-installed as hc_oidc.settings, next to hc_oidc.oidc and hc_oidc.oidc_settings
-(copies of hc/accounts/oidc.py and hc/accounts/oidc_settings.py).
+installed as hc_oidc.settings, inside a copy of the hc/oidc package.
 
 To use it, set these environment variables for the Healthchecks container:
 
@@ -20,7 +19,7 @@ from typing import Any
 
 from hc.settings import *  # noqa: F403
 
-from .oidc_settings import OIDC_MODULE, configure_oidc
+from .conf import APP, configure_oidc
 
 if configure_oidc(globals()):
     # The unmodified hc/urls.py does not know about OIDC,
@@ -42,14 +41,14 @@ def __getattr__(name: str) -> Any:
         # version may have changed
         from hc.urls import prefix
 
-        from . import oidc
+        from . import views
     except ImportError as e:
         msg = f"The OIDC add-on is incompatible with this Healthchecks version: {e}"
         raise ImproperlyConfigured(msg) from e
 
     return [
         # Handles OIDC_AUTO_LOGIN, the unmodified login view does not
-        path(f"{prefix}accounts/login/", oidc.login),
-        path(prefix, include(OIDC_MODULE)),
+        path(f"{prefix}accounts/login/", views.login),
+        path(prefix, include(f"{APP}.urls")),
         path("", include("hc.urls")),
     ]

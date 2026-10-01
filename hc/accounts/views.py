@@ -189,11 +189,11 @@ def login(request: HttpRequest) -> HttpResponse:
 
     oidc_login_url = None
     if settings.OIDC_PROVIDER_URL:
-        from hc.accounts import oidc
+        from hc.oidc import views as oidc_views
 
-        if auto_login_response := oidc.auto_login(request):
+        if auto_login_response := oidc_views.auto_login(request):
             return auto_login_response
-        oidc_login_url = oidc.login_url(request)
+        oidc_login_url = oidc_views.login_url(request)
 
     bad_link = request.session.pop("bad_link", None)
     ctx = {

@@ -13,19 +13,20 @@ from django.test import RequestFactory
 from django.test.utils import override_settings
 from django.urls import include, path
 
-from hc.accounts import oidc_settings
-from hc.accounts.oidc_settings import configure_oidc, oidc_check
+from hc.oidc import conf
+from hc.oidc.conf import configure_oidc, oidc_check
+from hc.oidc.models import OIDCIdentity
 from hc.settings import envbool, envint, envsecret
 from hc.test import BaseTestCase
 
 NO_OIDC = importlib.util.find_spec("mozilla_django_oidc") is None
 
 # Mimic hc/urls.py with OIDC enabled
-urlpatterns = [] if NO_OIDC else [path("", include("hc.accounts.oidc"))]
+urlpatterns = [] if NO_OIDC else [path("", include("hc.oidc.urls"))]
 urlpatterns.append(path("", include("hc.urls")))
 
 OIDC_SETTINGS = {
-    "ROOT_URLCONF": "hc.accounts.tests.test_oidc",
+    "ROOT_URLCONF": "hc.oidc.tests.test_oidc",
     "OIDC_PROVIDER_URL": "https://login.example.org",
     "OIDC_RP_CLIENT_ID": "client-id",
     "OIDC_RP_CLIENT_SECRET": "client-secret",
@@ -37,6 +38,7 @@ OIDC_SETTINGS = {
     "OIDC_OP_JWKS_ENDPOINT": "https://login.example.org/jwks",
     "OIDC_CREATE_USER": True,
     "OIDC_AUTO_LOGIN": False,
+    "OIDC_LINK_BY_EMAIL": True,
 }
 
 
@@ -85,13 +87,13 @@ class OidcLoginTestCase(BaseTestCase):
         self.assertContains(r, "Single sign-on failed")
 
     def _login_view(self, url: str) -> HttpResponse:
-        # Calls the login view used by docker/oidc/local_settings.py
-        from hc.accounts import oidc
+        # Calls the login view used by docker/oidc/settings.py
+        from hc.oidc import views
 
         request = RequestFactory().get(url)
         request.user = AnonymousUser()
         request.session = SessionStore()
-        return oidc.login(request)
+        return views.login(request)
 
     @override_settings(OIDC_AUTO_LOGIN=True)
     def test_upstream_login_view_redirects_to_sso(self) -> None:
@@ -120,40 +122,94 @@ class OidcLoginTestCase(BaseTestCase):
 class OidcBackendTestCase(BaseTestCase):
     def setUp(self) -> None:
         super().setUp()
-        from hc.accounts.oidc import OIDCBackend
+        from hc.oidc.auth import OIDCBackend
 
         self.backend = OIDCBackend()
 
-    def test_it_matches_existing_user_by_email(self) -> None:
-        users = self.backend.filter_users_by_claims({"email": "ALICE@example.org"})
-        self.assertEqual(list(users), [self.alice])
+    def _login(self, **claims: Any) -> User | None:
+        # Runs the backend's user lookup / creation like a real OIDC login does
+        # (with the userinfo request mocked out)
+        claims.setdefault("sub", "alice-sub")
+        claims.setdefault("email", "alice@example.org")
+        with patch.object(self.backend, "get_userinfo", return_value=claims):
+            user: User | None = self.backend.get_or_create_user("token", "id", {})
+        return user
 
-    def test_it_creates_user(self) -> None:
-        user = self.backend.create_user({"email": "Dave@example.org"})
+    def _link(self, user: User, sub: str) -> None:
+        OIDCIdentity.objects.create(
+            user=user, issuer="https://login.example.org", sub=sub
+        )
+
+    def test_it_links_existing_user_by_email_on_first_login(self) -> None:
+        user = self._login(email="ALICE@example.org")
+        self.assertEqual(user, self.alice)
+
+        identity = OIDCIdentity.objects.get()
+        self.assertEqual(identity.user, self.alice)
+        self.assertEqual(identity.issuer, "https://login.example.org")
+        self.assertEqual(identity.sub, "alice-sub")
+
+    def test_it_matches_linked_user_by_sub(self) -> None:
+        self._link(self.alice, "alice-sub")
+        # The email address has changed at the identity provider
+        user = self._login(email="alice.new@example.org")
+        self.assertEqual(user, self.alice)
+        self.assertEqual(OIDCIdentity.objects.count(), 1)
+
+    def test_it_does_not_take_over_linked_account(self) -> None:
+        self._link(self.alice, "alice-sub")
+        # Another identity claims Alice's email address
+        self.assertIsNone(self._login(sub="mallory-sub"))
+        self.assertEqual(OIDCIdentity.objects.count(), 1)
+        # It also must not create a second account with the same address
+        self.assertEqual(User.objects.filter(email="alice@example.org").count(), 1)
+
+    @override_settings(OIDC_LINK_BY_EMAIL=False)
+    def test_it_does_not_link_by_email_if_disabled(self) -> None:
+        self.assertIsNone(self._login())
+        self.assertFalse(OIDCIdentity.objects.exists())
+
+    @override_settings(OIDC_LINK_BY_EMAIL=False)
+    def test_it_matches_linked_user_if_link_by_email_disabled(self) -> None:
+        self._link(self.alice, "alice-sub")
+        self.assertEqual(self._login(), self.alice)
+
+    def test_it_creates_and_links_user(self) -> None:
+        user = self._login(sub="dave-sub", email="Dave@example.org")
+        assert user
         self.assertEqual(user.email, "dave@example.org")
-        self.assertTrue(User.objects.filter(email="dave@example.org").exists())
         # It should also create a profile and a project
         self.assertTrue(user.profile)
         self.assertEqual(user.project_set.count(), 1)
+        self.assertEqual(OIDCIdentity.objects.get().user, user)
+
+    @override_settings(OIDC_CREATE_USER=False)
+    def test_it_does_not_create_user_if_disabled(self) -> None:
+        self.assertIsNone(self._login(sub="dave-sub", email="dave@example.org"))
+        self.assertFalse(User.objects.filter(email="dave@example.org").exists())
 
     def test_it_rejects_unverified_email(self) -> None:
-        claims = {"email": "alice@example.org", "email_verified": False}
+        claims = {"sub": "1", "email": "alice@example.org", "email_verified": False}
         self.assertFalse(self.backend.verify_claims(claims))
 
     @override_settings(OIDC_ALLOW_UNVERIFIED_EMAIL=True)
     def test_it_allows_unverified_email_if_configured(self) -> None:
-        claims = {"email": "alice@example.org", "email_verified": False}
+        claims = {"sub": "1", "email": "alice@example.org", "email_verified": False}
         self.assertTrue(self.backend.verify_claims(claims))
 
     def test_it_accepts_verified_email(self) -> None:
-        claims = {"email": "alice@example.org", "email_verified": True}
+        claims = {"sub": "1", "email": "alice@example.org", "email_verified": True}
         self.assertTrue(self.backend.verify_claims(claims))
 
     def test_it_accepts_missing_email_verified_claim(self) -> None:
-        self.assertTrue(self.backend.verify_claims({"email": "alice@example.org"}))
+        claims = {"sub": "1", "email": "alice@example.org"}
+        self.assertTrue(self.backend.verify_claims(claims))
 
     def test_it_requires_email(self) -> None:
-        self.assertFalse(self.backend.verify_claims({"sub": "123"}))
+        self.assertFalse(self.backend.verify_claims({"sub": "1"}))
+
+    def test_it_requires_sub(self) -> None:
+        self.assertFalse(self.backend.verify_claims({"email": "alice@example.org"}))
 
 
 @override_settings(
@@ -211,7 +267,7 @@ class ConfigureOidcTestCase(BaseTestCase):
         }
 
     def test_backend_path_follows_package_name(self) -> None:
-        self.assertEqual(oidc_settings.BACKEND, "hc.accounts.oidc.OIDCBackend")
+        self.assertEqual(conf.BACKEND, "hc.oidc.auth.OIDCBackend")
 
     @patch.dict("os.environ", {"OIDC_PROVIDER_URL": ""})
     def test_it_does_nothing_without_provider_url(self) -> None:
@@ -226,19 +282,25 @@ class ConfigureOidcTestCase(BaseTestCase):
         self.assertTrue(configure_oidc(ns))
         self.assertEqual(ns["OIDC_PROVIDER_URL"], "https://login.example.org")
         self.assertEqual(ns["OIDC_RP_CLIENT_ID"], "client-id")
-        self.assertEqual(ns["OIDC_OP_TOKEN_ENDPOINT"], "https://login.example.org/token")
+        self.assertEqual(
+            ns["OIDC_OP_TOKEN_ENDPOINT"], "https://login.example.org/token"
+        )
         self.assertEqual(ns["LOGIN_REDIRECT_URL"], "/sub/")
-        self.assertEqual(ns["LOGIN_REDIRECT_URL_FAILURE"], "/sub/accounts/login/?oidc_failed")
+        self.assertEqual(
+            ns["LOGIN_REDIRECT_URL_FAILURE"], "/sub/accounts/login/?oidc_failed"
+        )
         self.assertIn("mozilla_django_oidc", ns["INSTALLED_APPS"])
-        self.assertIn(oidc_settings.BACKEND, ns["AUTHENTICATION_BACKENDS"])
+        self.assertIn("hc.oidc", ns["INSTALLED_APPS"])
+        self.assertTrue(ns["OIDC_LINK_BY_EMAIL"])
+        self.assertIn(conf.BACKEND, ns["AUTHENTICATION_BACKENDS"])
 
         # A second call (e.g., the add-on settings on top of hc/settings.py)
         # must not configure OIDC twice
         self.assertFalse(configure_oidc(ns))
-        self.assertEqual(ns["AUTHENTICATION_BACKENDS"].count(oidc_settings.BACKEND), 1)
+        self.assertEqual(ns["AUTHENTICATION_BACKENDS"].count(conf.BACKEND), 1)
 
     @patch.dict("os.environ", ENV)
     def test_it_reports_missing_packages(self) -> None:
-        with patch.object(oidc_settings, "find_spec", lambda name: None):
+        with patch.object(conf, "find_spec", lambda name: None):
             with self.assertRaisesRegex(ImproperlyConfigured, "requests"):
                 configure_oidc(self._ns())

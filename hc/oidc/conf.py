@@ -5,9 +5,8 @@ hc/settings.py, or from docker/oidc/settings.py when adding OIDC support to an
 unmodified Healthchecks image (see docker/oidc/README.md). It must therefore not
 import anything that requires configured settings or a ready app registry.
 
-It must also not hardcode its own package name: in the add-on for the upstream
-image, it is installed as hc_oidc.oidc_settings instead of
-hc.accounts.oidc_settings.
+It must also not hardcode its own package name: this package is hc.oidc in this
+repository, but hc_oidc in the add-on for the upstream image.
 
 """
 
@@ -24,9 +23,9 @@ from urllib.request import urlopen
 from django.core.checks import Warning, register
 from django.core.exceptions import ImproperlyConfigured
 
-# The module with the OIDC backend, views and URL patterns, located next to this one
-OIDC_MODULE = f"{__package__}.oidc"
-BACKEND = f"{OIDC_MODULE}.OIDCBackend"
+# This package (hc.oidc or hc_oidc), which is also a Django app
+APP = __name__.rpartition(".")[0]
+BACKEND = f"{APP}.auth.OIDCBackend"
 # Packages mozilla-django-oidc needs, but which we expect the Healthchecks
 # image to already provide (the add-on installs it with "pip install --no-deps")
 REQUIRED_PACKAGES = ("mozilla_django_oidc", "requests", "jwt", "cryptography")
@@ -78,6 +77,7 @@ def configure_oidc(ns: dict[str, Any]) -> bool:
     ns["OIDC_USE_PKCE"] = envbool("OIDC_USE_PKCE", "False")
     ns["OIDC_CREATE_USER"] = envbool("OIDC_CREATE_USER", "True")
     ns["OIDC_ALLOW_UNVERIFIED_EMAIL"] = envbool("OIDC_ALLOW_UNVERIFIED_EMAIL", "False")
+    ns["OIDC_LINK_BY_EMAIL"] = envbool("OIDC_LINK_BY_EMAIL", "True")
     ns["OIDC_AUTO_LOGIN"] = envbool("OIDC_AUTO_LOGIN", "False")
     ns["OIDC_TIMEOUT"] = envint("OIDC_TIMEOUT", "10")
 
@@ -96,7 +96,10 @@ def configure_oidc(ns: dict[str, Any]) -> bool:
     ns["LOGIN_REDIRECT_URL"] = f"{site_root_path}/"
     ns["LOGIN_REDIRECT_URL_FAILURE"] = f"{ns['LOGIN_URL']}?oidc_failed"
 
-    ns["INSTALLED_APPS"] = (*ns["INSTALLED_APPS"], "mozilla_django_oidc")
+    apps = [
+        app for app in ("mozilla_django_oidc", APP) if app not in ns["INSTALLED_APPS"]
+    ]
+    ns["INSTALLED_APPS"] = (*ns["INSTALLED_APPS"], *apps)
     ns["AUTHENTICATION_BACKENDS"] = [*ns["AUTHENTICATION_BACKENDS"], BACKEND]
     if envbool("OIDC_SESSION_REFRESH", "False"):
         middleware = list(ns["MIDDLEWARE"])
@@ -129,7 +132,9 @@ def oidc_check(
         return []
 
     items = []
-    hint = "See https://healthchecks.io/docs/self_hosted_configuration/#OIDC_PROVIDER_URL"
+    hint = (
+        "See https://healthchecks.io/docs/self_hosted_configuration/#OIDC_PROVIDER_URL"
+    )
     if not getattr(settings, "OIDC_RP_CLIENT_ID", None):
         items.append(
             Warning(
