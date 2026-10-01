@@ -7,6 +7,7 @@ unless the OIDC feature is enabled.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from django.conf import settings
@@ -17,6 +18,11 @@ from mozilla_django_oidc.auth import OIDCAuthenticationBackend
 from hc.accounts.views import _make_user
 
 from .models import OIDCIdentity
+
+# A fixed name (instead of __name__, which is hc.oidc.auth or hc_oidc.auth): the
+# messages then end up in the container log in both setups, like the messages
+# of mozilla-django-oidc itself, and not in Healthchecks' "hc" logger
+logger = logging.getLogger("hc_oidc")
 
 
 class OIDCBackend(OIDCAuthenticationBackend):  # type: ignore[misc]
@@ -30,17 +36,33 @@ class OIDCBackend(OIDCAuthenticationBackend):  # type: ignore[misc]
     """
 
     def verify_claims(self, claims: dict[str, Any]) -> bool:
-        if not claims.get("sub"):
-            return False
-
         # Unless OIDC_ALLOW_UNVERIFIED_EMAIL is set, do not match or create
         # accounts based on email addresses the identity provider has
         # explicitly marked as unverified
         allow_unverified = getattr(settings, "OIDC_ALLOW_UNVERIFIED_EMAIL", False)
-        if claims.get("email_verified") is False and not allow_unverified:
-            return False
+        if not claims.get("sub"):
+            reason = "the 'sub' claim is missing"
+        elif not claims.get("email"):
+            reason = (
+                "the 'email' claim is missing (does the identity provider allow "
+                "the 'email' scope for this client, and does the user have an "
+                "email address?)"
+            )
+        elif claims.get("email_verified") is False and not allow_unverified:
+            reason = (
+                "the identity provider reports the email address as unverified "
+                "(see OIDC_ALLOW_UNVERIFIED_EMAIL)"
+            )
+        else:
+            return True
 
-        return bool(super().verify_claims(claims))
+        # Log the claim names only, the values are personal data
+        logger.warning(
+            "OIDC login rejected: %s. Received claims: %s",
+            reason,
+            ", ".join(sorted(claims)),
+        )
+        return False
 
     def filter_users_by_claims(self, claims: dict[str, Any]) -> QuerySet[User]:
         issuer = settings.OIDC_PROVIDER_URL

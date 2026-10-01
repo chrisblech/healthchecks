@@ -211,6 +211,24 @@ class OidcBackendTestCase(BaseTestCase):
     def test_it_requires_sub(self) -> None:
         self.assertFalse(self.backend.verify_claims({"email": "alice@example.org"}))
 
+    def test_it_logs_rejection_reason_and_claim_names(self) -> None:
+        claims = {"sub": "1", "name": "Alice"}
+        with self.assertLogs("hc_oidc", "WARNING") as logs:
+            self.assertFalse(self.backend.verify_claims(claims))
+
+        self.assertIn("the 'email' claim is missing", logs.output[0])
+        self.assertIn("Received claims: name, sub", logs.output[0])
+        # It must not log claim values
+        self.assertNotIn("Alice", logs.output[0])
+
+    def test_it_logs_unverified_email(self) -> None:
+        claims = {"sub": "1", "email": "alice@example.org", "email_verified": False}
+        with self.assertLogs("hc_oidc", "WARNING") as logs:
+            self.backend.verify_claims(claims)
+
+        self.assertIn("OIDC_ALLOW_UNVERIFIED_EMAIL", logs.output[0])
+        self.assertNotIn("alice@example.org", logs.output[0])
+
 
 @skipIf(NO_OIDC, "mozilla-django-oidc is not installed")
 @override_settings(**OIDC_SETTINGS, OIDC_ADMIN_CLAIM="role", OIDC_ADMIN_VALUE="admin")
