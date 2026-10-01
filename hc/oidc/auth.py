@@ -67,11 +67,13 @@ class OIDCBackend(OIDCAuthenticationBackend):  # type: ignore[misc]
 
         user = _make_user(email)
         self._link(user, claims)
+        self._update_admin_status(user, claims)
         return user
 
     def update_user(self, user: User, claims: dict[str, Any]) -> User:
         # Links the account if it was matched by email address
         self._link(user, claims)
+        self._update_admin_status(user, claims)
         return user
 
     def get_user(self, user_id: int) -> User | None:
@@ -86,3 +88,40 @@ class OIDCBackend(OIDCAuthenticationBackend):  # type: ignore[misc]
             issuer=settings.OIDC_PROVIDER_URL,
             defaults={"sub": claims["sub"]},
         )
+
+    def _update_admin_status(self, user: User, claims: dict[str, Any]) -> None:
+        """With OIDC_ADMIN_CLAIM, grant or revoke admin rights based on the claim."""
+        if (is_admin := is_admin_by_claims(claims)) is None:
+            return
+
+        if user.is_staff != is_admin or user.is_superuser != is_admin:
+            user.is_staff = user.is_superuser = is_admin
+            user.save(update_fields=["is_staff", "is_superuser"])
+
+
+def is_admin_by_claims(claims: dict[str, Any]) -> bool | None:
+    """Evaluate OIDC_ADMIN_CLAIM and OIDC_ADMIN_VALUE.
+
+    Return None if OIDC_ADMIN_CLAIM is not set. Otherwise, look up the claim
+    (a dotted name like "realm_access.roles" looks up nested claims) and return:
+
+    * the claim's value, if it is a boolean,
+    * whether the claim contains OIDC_ADMIN_VALUE, if it is a list,
+    * whether the claim equals OIDC_ADMIN_VALUE, otherwise.
+
+    A missing claim means "not an admin".
+
+    """
+    if not (claim := getattr(settings, "OIDC_ADMIN_CLAIM", None)):
+        return None
+
+    value: Any = claims
+    for key in claim.split("."):
+        value = value.get(key) if isinstance(value, dict) else None
+
+    expected = getattr(settings, "OIDC_ADMIN_VALUE", "admin")
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, list):
+        return expected in [str(item) for item in value]
+    return value is not None and str(value) == expected

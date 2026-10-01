@@ -212,6 +212,70 @@ class OidcBackendTestCase(BaseTestCase):
         self.assertFalse(self.backend.verify_claims({"email": "alice@example.org"}))
 
 
+@skipIf(NO_OIDC, "mozilla-django-oidc is not installed")
+@override_settings(**OIDC_SETTINGS, OIDC_ADMIN_CLAIM="role", OIDC_ADMIN_VALUE="admin")
+class OidcAdminClaimTestCase(BaseTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        from hc.oidc.auth import OIDCBackend
+
+        self.backend = OIDCBackend()
+
+    def _login(self, **claims: Any) -> User:
+        claims.setdefault("sub", "alice-sub")
+        claims.setdefault("email", "alice@example.org")
+        with patch.object(self.backend, "get_userinfo", return_value=claims):
+            user = self.backend.get_or_create_user("token", "id", {})
+        assert isinstance(user, User)
+        user.refresh_from_db()
+        return user
+
+    def test_it_grants_admin_status(self) -> None:
+        user = self._login(role="admin")
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.is_superuser)
+
+    def test_it_revokes_admin_status(self) -> None:
+        self.alice.is_staff = self.alice.is_superuser = True
+        self.alice.save()
+
+        user = self._login(role="user")
+        self.assertFalse(user.is_staff)
+        self.assertFalse(user.is_superuser)
+
+    def test_missing_claim_means_not_admin(self) -> None:
+        self.alice.is_staff = self.alice.is_superuser = True
+        self.alice.save()
+
+        self.assertFalse(self._login().is_superuser)
+
+    def test_it_grants_admin_status_to_new_user(self) -> None:
+        user = self._login(sub="dave-sub", email="dave@example.org", role="admin")
+        self.assertTrue(user.is_superuser)
+
+    @override_settings(OIDC_ADMIN_CLAIM="groups", OIDC_ADMIN_VALUE="hc-admins")
+    def test_it_handles_list_claim(self) -> None:
+        self.assertTrue(self._login(groups=["staff", "hc-admins"]).is_superuser)
+        self.assertFalse(self._login(groups=["staff"]).is_superuser)
+
+    @override_settings(OIDC_ADMIN_CLAIM="realm_access.roles")
+    def test_it_handles_nested_claim(self) -> None:
+        user = self._login(realm_access={"roles": ["admin"]})
+        self.assertTrue(user.is_superuser)
+
+    @override_settings(OIDC_ADMIN_CLAIM="is_admin")
+    def test_it_handles_boolean_claim(self) -> None:
+        self.assertTrue(self._login(is_admin=True).is_superuser)
+        self.assertFalse(self._login(is_admin=False).is_superuser)
+
+    @override_settings(OIDC_ADMIN_CLAIM=None)
+    def test_it_leaves_admin_status_alone_if_not_configured(self) -> None:
+        self.alice.is_staff = self.alice.is_superuser = True
+        self.alice.save()
+
+        self.assertTrue(self._login(role="user").is_superuser)
+
+
 @override_settings(
     OIDC_PROVIDER_URL="https://login.example.org",
     OIDC_RP_CLIENT_ID="client-id",

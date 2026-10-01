@@ -78,6 +78,8 @@ def configure_oidc(ns: dict[str, Any]) -> bool:
     ns["OIDC_CREATE_USER"] = envbool("OIDC_CREATE_USER", "True")
     ns["OIDC_ALLOW_UNVERIFIED_EMAIL"] = envbool("OIDC_ALLOW_UNVERIFIED_EMAIL", "False")
     ns["OIDC_LINK_BY_EMAIL"] = envbool("OIDC_LINK_BY_EMAIL", "True")
+    ns["OIDC_ADMIN_CLAIM"] = os.getenv("OIDC_ADMIN_CLAIM") or None
+    ns["OIDC_ADMIN_VALUE"] = os.getenv("OIDC_ADMIN_VALUE", "admin")
     ns["OIDC_AUTO_LOGIN"] = envbool("OIDC_AUTO_LOGIN", "False")
     ns["OIDC_TIMEOUT"] = envint("OIDC_TIMEOUT", "10")
 

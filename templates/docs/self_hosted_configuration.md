@@ -624,6 +624,21 @@ The following additional settings are available:
     are stored per `OIDC_PROVIDER_URL` value, so after changing it, accounts get
     linked again.
 
+`OIDC_ADMIN_CLAIM`
+:   Default: `None`. The name of a claim that controls admin rights (access to the
+    Django admin site). If set, Healthchecks grants or revokes admin rights on every
+    single sign-on, based on the claim. A dotted name looks up a nested claim, for
+    example, `realm_access.roles` for Keycloak realm roles. The user is an admin if
+    the claim is `true` (boolean claim), contains `OIDC_ADMIN_VALUE` (list claim),
+    or equals `OIDC_ADMIN_VALUE` (any other claim). A missing claim means
+    "not an admin", so with this setting, the identity provider decides about admin
+    rights also for existing admins. The claim must be part of the provider's
+    userinfo response, which may require an additional scope in `OIDC_RP_SCOPES`.
+
+`OIDC_ADMIN_VALUE`
+:   Default: `admin`. The claim value that grants admin rights, see
+    `OIDC_ADMIN_CLAIM`.
+
 `OIDC_ALLOW_UNVERIFIED_EMAIL`
 :   Default: `False`. Set to `True` to also accept logins where the identity
     provider reports the email address as unverified. Only enable this if you
