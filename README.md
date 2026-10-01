@@ -342,6 +342,26 @@ REMOTE_USER_HEADER = "HTTP_X_AUTHENTICATED_USER"
 AUTHENTICATION_BACKENDS = ["hc.accounts.backends.CustomHeaderBackend"]
 ```
 
+### Single Sign-On via OpenID Connect
+
+As an alternative to an authenticating proxy, Healthchecks can authenticate users
+directly with an OpenID Connect identity provider (for example, Keycloak, Authentik
+or Authelia). This feature is optional: it stays completely disabled unless
+the `OIDC_PROVIDER_URL` environment variable is set.
+
+When enabled, the login page gets a "Log In with Single Sign-On" button, and the
+other login methods stay available. Healthchecks identifies users by their identity
+at the provider (the `sub` claim). It links existing accounts by email address on
+their first single sign-on, and can optionally manage admin rights based on a claim.
+
+This feature requires the `mozilla-django-oidc` package (included in images built
+from this repository). For all settings, see the `OIDC_*` entries in
+[Server Configuration](templates/docs/self_hosted_configuration.md#OIDC_PROVIDER_URL).
+
+To add OpenID Connect support to the unmodified upstream Docker image
+(`healthchecks/healthchecks`), for example, in a Portainer stack, use the add-on
+described in [docker/oidc/README.md](docker/oidc/README.md).
+
 ## External Object Storage
 
 Healthchecks can optionally store large ping bodies in S3-compatible object

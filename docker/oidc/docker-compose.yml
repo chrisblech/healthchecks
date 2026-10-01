@@ -21,7 +21,7 @@ services:
   # One-shot container: copies the add-on into the "oidc-addon" volume, then exits.
   # Pin a released version, see README.md
   oidc-addon:
-    image: ghcr.io/chrisblech/healthchecks-oidc-addon:1.0.0
+    image: ghcr.io/chrisblech/healthchecks-oidc-addon:1.0.1
     volumes:
       - oidc-addon:/target
     restart: "no"
@@ -43,6 +43,9 @@ services:
       - OIDC_PROVIDER_URL=https://login.example.org/
       - OIDC_CLIENT_ID=healthchecks
       - OIDC_CLIENT_SECRET=change-me
+      # Some identity providers report email addresses as unverified
+      # (email_verified=false). For those, unverified addresses must be allowed:
+      # - OIDC_ALLOW_UNVERIFIED_EMAIL=True
       # Regular Healthchecks configuration
       - DB=postgres
       - DB_HOST=db

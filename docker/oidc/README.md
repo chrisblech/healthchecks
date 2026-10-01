@@ -60,7 +60,7 @@ relevant parts:
 ```yaml
 services:
   oidc-addon:
-    image: ghcr.io/chrisblech/healthchecks-oidc-addon:1.0.0
+    image: ghcr.io/chrisblech/healthchecks-oidc-addon:1.0.1
     volumes:
       - oidc-addon:/target
     restart: "no"
@@ -78,6 +78,9 @@ services:
       - OIDC_PROVIDER_URL=https://login.example.org/
       - OIDC_CLIENT_ID=healthchecks
       - OIDC_CLIENT_SECRET=...
+      # Some identity providers report email addresses as unverified
+      # (email_verified=false). For those, unverified addresses must be allowed:
+      # - OIDC_ALLOW_UNVERIFIED_EMAIL=True
 
 volumes:
   oidc-addon:
