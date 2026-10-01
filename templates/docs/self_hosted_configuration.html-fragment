@@ -45,7 +45,27 @@ from environment variables. Below is a list of environment variables it reads an
 <li><a href="#MSTEAMS_ENABLED">MSTEAMS_ENABLED</a></li>
 <li><a href="#NTFY_SH_TOKEN">NTFY_SH_TOKEN</a></li>
 <li><a href="#NTFY_SH_TOKEN_FILE">NTFY_SH_TOKEN_FILE</a></li>
+<li><a href="#OIDC_ADMIN_CLAIM">OIDC_ADMIN_CLAIM</a></li>
+<li><a href="#OIDC_ADMIN_VALUE">OIDC_ADMIN_VALUE</a></li>
+<li><a href="#OIDC_ALLOW_UNVERIFIED_EMAIL">OIDC_ALLOW_UNVERIFIED_EMAIL</a></li>
+<li><a href="#OIDC_AUTO_LOGIN">OIDC_AUTO_LOGIN</a></li>
+<li><a href="#OIDC_CLIENT_ID">OIDC_CLIENT_ID</a></li>
+<li><a href="#OIDC_CLIENT_ID_FILE">OIDC_CLIENT_ID_FILE</a></li>
+<li><a href="#OIDC_CLIENT_SECRET">OIDC_CLIENT_SECRET</a></li>
+<li><a href="#OIDC_CLIENT_SECRET_FILE">OIDC_CLIENT_SECRET_FILE</a></li>
+<li><a href="#OIDC_CREATE_USER">OIDC_CREATE_USER</a></li>
+<li><a href="#OIDC_LINK_BY_EMAIL">OIDC_LINK_BY_EMAIL</a></li>
+<li><a href="#OIDC_OP_AUTHORIZATION_ENDPOINT">OIDC_OP_AUTHORIZATION_ENDPOINT</a></li>
+<li><a href="#OIDC_OP_JWKS_ENDPOINT">OIDC_OP_JWKS_ENDPOINT</a></li>
+<li><a href="#OIDC_OP_TOKEN_ENDPOINT">OIDC_OP_TOKEN_ENDPOINT</a></li>
+<li><a href="#OIDC_OP_USER_ENDPOINT">OIDC_OP_USER_ENDPOINT</a></li>
 <li><a href="#OIDC_PROVIDER_URL">OIDC_PROVIDER_URL</a></li>
+<li><a href="#OIDC_RP_SCOPES">OIDC_RP_SCOPES</a></li>
+<li><a href="#OIDC_RP_SIGN_ALGO">OIDC_RP_SIGN_ALGO</a></li>
+<li><a href="#OIDC_SESSION_REFRESH">OIDC_SESSION_REFRESH</a></li>
+<li><a href="#OIDC_TIMEOUT">OIDC_TIMEOUT</a></li>
+<li><a href="#OIDC_TOKEN_USE_BASIC_AUTH">OIDC_TOKEN_USE_BASIC_AUTH</a></li>
+<li><a href="#OIDC_USE_PKCE">OIDC_USE_PKCE</a></li>
 <li><a href="#OPSGENIE_ENABLED">OPSGENIE_ENABLED</a></li>
 <li><a href="#PAGERTREE_ENABLED">PAGERTREE_ENABLED</a></li>
 <li><a href="#PD_APP_ID">PD_APP_ID</a></li>
@@ -397,6 +417,131 @@ access token.</p>
 read the contents of the file into the <a href="#NTFY_SH_TOKEN">NTFY_SH_TOKEN</a> setting.
 If <code>NTFY_SH_TOKEN</code> and <code>NTFY_SH_TOKEN_FILE</code> are both set, <code>NTFY_SH_TOKEN_FILE</code> takes
 precedence.</p>
+<h2 id="OIDC_ADMIN_CLAIM"><code>OIDC_ADMIN_CLAIM</code></h2>
+<p>Default: <code>None</code></p>
+<p>The name of an OpenID Connect claim that controls the user's admin rights. Only
+has an effect if <a href="#OIDC_PROVIDER_URL">OIDC_PROVIDER_URL</a> is set.</p>
+<p>If <code>OIDC_ADMIN_CLAIM</code> is set, Healthchecks grants or revokes admin rights
+(the <code>is_staff</code> and <code>is_superuser</code> flags) on every single sign-on, based on the
+claim's value:</p>
+<ul>
+<li>a boolean claim grants admin rights if it is <code>true</code>,</li>
+<li>a list claim (for example, a list of groups or roles) grants admin rights if it
+  contains <a href="#OIDC_ADMIN_VALUE">OIDC_ADMIN_VALUE</a>,</li>
+<li>any other claim grants admin rights if it equals
+  <a href="#OIDC_ADMIN_VALUE">OIDC_ADMIN_VALUE</a>,</li>
+<li>a missing claim revokes admin rights.</li>
+</ul>
+<p>A dotted name looks up a nested claim. For example, <code>realm_access.roles</code> looks up
+the <code>roles</code> list in the <code>realm_access</code> claim.</p>
+<p><strong>Important:</strong> In Healthchecks, admin rights are far-reaching. An admin can use the
+Django admin site (with access to all users and their data), and can view and modify
+<strong>all projects, checks and integrations of all users</strong>. Make sure only the intended
+users can get the claim value at the identity provider.</p>
+<p>Also note:</p>
+<ul>
+<li>With this setting, the identity provider decides about admin rights, also for
+  existing admin accounts (for example, ones created with
+  <code>manage.py createsuperuser</code>). If such an account logs in via single sign-on
+  without the claim, it loses its admin rights.</li>
+<li>Admin rights are only updated on single sign-on. Logging in with a password or
+  a login link does not change them.</li>
+<li>Healthchecks reads the claim from the identity provider's userinfo response.
+  Make sure the provider includes the claim there. This may require an additional
+  scope in <a href="#OIDC_RP_SCOPES">OIDC_RP_SCOPES</a>.</li>
+</ul>
+<p>Examples:</p>
+<ul>
+<li>Keycloak realm role "hc-admin": <code>OIDC_ADMIN_CLAIM=realm_access.roles</code>,
+  <code>OIDC_ADMIN_VALUE=hc-admin</code></li>
+<li>Group "hc-admins" (Authelia, Authentik, and others):
+  <code>OIDC_ADMIN_CLAIM=groups</code>, <code>OIDC_ADMIN_VALUE=hc-admins</code>, and add the <code>groups</code>
+  scope to <code>OIDC_RP_SCOPES</code></li>
+</ul>
+<h2 id="OIDC_ADMIN_VALUE"><code>OIDC_ADMIN_VALUE</code></h2>
+<p>Default: <code>admin</code></p>
+<p>The claim value that grants admin rights, see
+<a href="#OIDC_ADMIN_CLAIM">OIDC_ADMIN_CLAIM</a>.</p>
+<h2 id="OIDC_ALLOW_UNVERIFIED_EMAIL"><code>OIDC_ALLOW_UNVERIFIED_EMAIL</code></h2>
+<p>Default: <code>False</code></p>
+<p>A boolean that controls whether Healthchecks accepts single sign-on for users
+whose email address the identity provider reports as unverified (the
+<code>email_verified</code> claim is <code>false</code>). By default, such logins are rejected.</p>
+<p>Only enable this if you trust the identity provider to not let users claim email
+addresses they do not own. Otherwise, a user could claim another user's email
+address and take over their (not yet linked) account, see
+<a href="#OIDC_LINK_BY_EMAIL">OIDC_LINK_BY_EMAIL</a>.</p>
+<h2 id="OIDC_AUTO_LOGIN"><code>OIDC_AUTO_LOGIN</code></h2>
+<p>Default: <code>False</code></p>
+<p>A boolean that controls whether the login page redirects to the identity provider
+right away, instead of showing the "Log In with Single Sign-On" button
+and the other login methods. If the single sign-on fails, Healthchecks shows the
+regular login page.</p>
+<p>Note: when a user logs out of Healthchecks, but still has an active session with
+the identity provider, they will be logged back in automatically on their next
+visit.</p>
+<h2 id="OIDC_CLIENT_ID"><code>OIDC_CLIENT_ID</code></h2>
+<p>Default: <code>None</code></p>
+<p>The client ID that the identity provider has issued for Healthchecks. Required if
+<a href="#OIDC_PROVIDER_URL">OIDC_PROVIDER_URL</a> is set.</p>
+<h2 id="OIDC_CLIENT_ID_FILE"><code>OIDC_CLIENT_ID_FILE</code></h2>
+<p>Default: <code>None</code></p>
+<p>If set, must contain a filesystem path pointing to a readable file. Healthchecks will
+read the contents of the file into the <a href="#OIDC_CLIENT_ID">OIDC_CLIENT_ID</a> setting.
+If <code>OIDC_CLIENT_ID</code> and <code>OIDC_CLIENT_ID_FILE</code> are both set, <code>OIDC_CLIENT_ID_FILE</code>
+takes precedence.</p>
+<h2 id="OIDC_CLIENT_SECRET"><code>OIDC_CLIENT_SECRET</code></h2>
+<p>Default: <code>None</code></p>
+<p>The client secret that the identity provider has issued for Healthchecks. Required
+if <a href="#OIDC_PROVIDER_URL">OIDC_PROVIDER_URL</a> is set.</p>
+<h2 id="OIDC_CLIENT_SECRET_FILE"><code>OIDC_CLIENT_SECRET_FILE</code></h2>
+<p>Default: <code>None</code></p>
+<p>If set, must contain a filesystem path pointing to a readable file. Healthchecks will
+read the contents of the file into the <a href="#OIDC_CLIENT_SECRET">OIDC_CLIENT_SECRET</a>
+setting. If <code>OIDC_CLIENT_SECRET</code> and <code>OIDC_CLIENT_SECRET_FILE</code> are both set,
+<code>OIDC_CLIENT_SECRET_FILE</code> takes precedence.</p>
+<h2 id="OIDC_CREATE_USER"><code>OIDC_CREATE_USER</code></h2>
+<p>Default: <code>True</code></p>
+<p>A boolean that controls whether single sign-on creates an account for users
+who do not have a Healthchecks account yet. Set it to <code>False</code> to only allow single
+sign-on for users with an existing account.</p>
+<h2 id="OIDC_LINK_BY_EMAIL"><code>OIDC_LINK_BY_EMAIL</code></h2>
+<p>Default: <code>True</code></p>
+<p>A boolean that controls how existing accounts get linked to identities at the
+identity provider.</p>
+<p>Healthchecks identifies users by their identity at the provider (the <code>sub</code> claim),
+not by their email address. Accounts created via single sign-on are linked to
+the identity right away. When <code>OIDC_LINK_BY_EMAIL</code> is enabled, the first single
+sign-on of an existing user links their account with a matching email address.
+From then on, the account is identified by the <code>sub</code> claim only: another identity
+claiming the same email address cannot take it over, and changing the email address
+at the identity provider does not affect the login.</p>
+<p>Once all existing users have linked their accounts, you can set this to <code>False</code>.
+Healthchecks will then only accept already linked accounts and (with
+<a href="#OIDC_CREATE_USER">OIDC_CREATE_USER</a>) new users.</p>
+<p>Administrators can view and remove links in the Django admin site, under
+"OIDC identities". After removing a link, the account gets linked again on its next
+single sign-on. Links are stored per <code>OIDC_PROVIDER_URL</code> value, so after changing
+<code>OIDC_PROVIDER_URL</code>, all accounts get linked again.</p>
+<h2 id="OIDC_OP_AUTHORIZATION_ENDPOINT"><code>OIDC_OP_AUTHORIZATION_ENDPOINT</code></h2>
+<p>Default: <code>None</code></p>
+<p>The identity provider's authorization endpoint. Healthchecks normally looks it up
+in the provider's <code>/.well-known/openid-configuration</code> document. Set this only if
+you need to override the discovered value. If all four <code>OIDC_OP_*</code> settings are
+set, Healthchecks does not load the <code>/.well-known/openid-configuration</code> document
+at all.</p>
+<h2 id="OIDC_OP_JWKS_ENDPOINT"><code>OIDC_OP_JWKS_ENDPOINT</code></h2>
+<p>Default: <code>None</code></p>
+<p>The identity provider's JWKS endpoint (the <code>jwks_uri</code> value). See
+<a href="#OIDC_OP_AUTHORIZATION_ENDPOINT">OIDC_OP_AUTHORIZATION_ENDPOINT</a>.</p>
+<h2 id="OIDC_OP_TOKEN_ENDPOINT"><code>OIDC_OP_TOKEN_ENDPOINT</code></h2>
+<p>Default: <code>None</code></p>
+<p>The identity provider's token endpoint. See
+<a href="#OIDC_OP_AUTHORIZATION_ENDPOINT">OIDC_OP_AUTHORIZATION_ENDPOINT</a>.</p>
+<h2 id="OIDC_OP_USER_ENDPOINT"><code>OIDC_OP_USER_ENDPOINT</code></h2>
+<p>Default: <code>None</code></p>
+<p>The identity provider's userinfo endpoint. See
+<a href="#OIDC_OP_AUTHORIZATION_ENDPOINT">OIDC_OP_AUTHORIZATION_ENDPOINT</a>.</p>
 <h2 id="OIDC_PROVIDER_URL"><code>OIDC_PROVIDER_URL</code></h2>
 <p>Default: <code>None</code></p>
 <p>The base URL of an OpenID Connect identity provider (for example,
@@ -404,8 +549,8 @@ precedence.</p>
 If <code>OIDC_PROVIDER_URL</code> is not set, the OpenID Connect support stays completely
 disabled, and none of the other <code>OIDC_*</code> settings have any effect.</p>
 <p>This feature requires the
-<a href="https://pypi.org/project/mozilla-django-oidc/">mozilla-django-oidc</a> package. The
-Healthchecks Docker image includes it. If you run Healthchecks without Docker,
+<a href="https://pypi.org/project/mozilla-django-oidc/">mozilla-django-oidc</a> package. Images
+built from this repository include it. If you run Healthchecks without Docker,
 install it with <code>pip install mozilla-django-oidc</code>. To add OpenID Connect support
 to an unmodified upstream Docker image, see <code>docker/oidc/README.md</code>.</p>
 <p>When <code>OIDC_PROVIDER_URL</code> is set, Healthchecks will:</p>
@@ -413,83 +558,57 @@ to an unmodified upstream Docker image, see <code>docker/oidc/README.md</code>.<
 <li>on startup, load the provider's endpoints from
    <code>OIDC_PROVIDER_URL/.well-known/openid-configuration</code>
    (and refuse to start if this fails)</li>
-<li>show a "Log In with Single Sign-On" button on the login page</li>
-<li>link each user account to the user's identity at the provider (the <code>sub</code> claim):
-   on the first single sign-on, Healthchecks links the account with a matching
-   email address. From then on, it identifies the account by the <code>sub</code> claim only,
-   so another identity claiming the same email address cannot take it over</li>
-<li>automatically create a user account if it does not exist
-   (unless <code>OIDC_CREATE_USER</code> is set to <code>False</code>)</li>
-<li>reject logins where the provider reports the email address as unverified
-   (<code>email_verified</code> claim is <code>false</code>), unless <code>OIDC_ALLOW_UNVERIFIED_EMAIL</code>
-   is set to <code>True</code></li>
+<li>show a "Log In with Single Sign-On" button on the login page
+   (or redirect there right away, see <a href="#OIDC_AUTO_LOGIN">OIDC_AUTO_LOGIN</a>)</li>
+<li>identify users by their identity at the provider (the <code>sub</code> claim), and link
+   existing accounts on their first single sign-on, see
+   <a href="#OIDC_LINK_BY_EMAIL">OIDC_LINK_BY_EMAIL</a></li>
+<li>automatically create a user account if it does not exist, see
+   <a href="#OIDC_CREATE_USER">OIDC_CREATE_USER</a></li>
+<li>reject logins where the provider reports the email address as unverified, see
+   <a href="#OIDC_ALLOW_UNVERIFIED_EMAIL">OIDC_ALLOW_UNVERIFIED_EMAIL</a></li>
+<li>optionally grant or revoke admin rights based on a claim, see
+   <a href="#OIDC_ADMIN_CLAIM">OIDC_ADMIN_CLAIM</a></li>
 <li>keep the other login methods (login link to email, password) enabled</li>
 </ul>
-<p>If <code>OIDC_PROVIDER_URL</code> is set, but <code>OIDC_CLIENT_ID</code> or <code>OIDC_CLIENT_SECRET</code> is
-missing, or <code>OIDC_RP_SCOPES</code> does not include <code>email</code>, Healthchecks will show a
-warning on startup.</p>
-<p>In your identity provider, register Healthchecks as a confidential client and
-use <code>SITE_ROOT/oidc/callback/</code> as the redirect URI. For example, if <code>SITE_ROOT</code> is
-<code>https://hc.example.org</code>, the redirect URI is <code>https://hc.example.org/oidc/callback/</code>.</p>
-<p>The following additional settings are available:</p>
-<dl>
-<dt><code>OIDC_CLIENT_ID</code>, <code>OIDC_CLIENT_SECRET</code></dt>
-<dd>The client ID and client secret issued by the identity provider.
-You can also use <code>OIDC_CLIENT_ID_FILE</code> and <code>OIDC_CLIENT_SECRET_FILE</code> to read the
-values from files.</dd>
-<dt><code>OIDC_RP_SIGN_ALGO</code></dt>
-<dd>Default: <code>RS256</code>. The algorithm the identity provider uses to sign ID tokens.</dd>
-<dt><code>OIDC_RP_SCOPES</code></dt>
-<dd>Default: <code>openid email</code>. The scopes to request. Must include <code>email</code>.</dd>
-<dt><code>OIDC_TOKEN_USE_BASIC_AUTH</code></dt>
-<dd>Default: <code>False</code>. Set to <code>True</code> to send the client credentials to the token
-endpoint using HTTP Basic authentication instead of in the POST body.</dd>
-<dt><code>OIDC_USE_PKCE</code></dt>
-<dd>Default: <code>False</code>. Set to <code>True</code> to use PKCE (Proof Key for Code Exchange).</dd>
-<dt><code>OIDC_CREATE_USER</code></dt>
-<dd>Default: <code>True</code>. Set to <code>False</code> to only allow single sign-on for users
-who already have a Healthchecks account.</dd>
-<dt><code>OIDC_LINK_BY_EMAIL</code></dt>
-<dd>Default: <code>True</code>. Controls whether the first single sign-on of an existing user
-links their account by email address. Once all existing users have linked
-their accounts, you can set this to <code>False</code> to only accept already linked
-accounts (and, with <code>OIDC_CREATE_USER</code>, new users). Administrators can view
-and remove links in the Django admin site, under "OIDC identities". Links
-are stored per <code>OIDC_PROVIDER_URL</code> value, so after changing it, accounts get
-linked again.</dd>
-<dt><code>OIDC_ADMIN_CLAIM</code></dt>
-<dd>Default: <code>None</code>. The name of a claim that controls admin rights (access to the
-Django admin site). If set, Healthchecks grants or revokes admin rights on every
-single sign-on, based on the claim. A dotted name looks up a nested claim, for
-example, <code>realm_access.roles</code> for Keycloak realm roles. The user is an admin if
-the claim is <code>true</code> (boolean claim), contains <code>OIDC_ADMIN_VALUE</code> (list claim),
-or equals <code>OIDC_ADMIN_VALUE</code> (any other claim). A missing claim means
-"not an admin", so with this setting, the identity provider decides about admin
-rights also for existing admins. The claim must be part of the provider's
-userinfo response, which may require an additional scope in <code>OIDC_RP_SCOPES</code>.</dd>
-<dt><code>OIDC_ADMIN_VALUE</code></dt>
-<dd>Default: <code>admin</code>. The claim value that grants admin rights, see
-<code>OIDC_ADMIN_CLAIM</code>.</dd>
-<dt><code>OIDC_ALLOW_UNVERIFIED_EMAIL</code></dt>
-<dd>Default: <code>False</code>. Set to <code>True</code> to also accept logins where the identity
-provider reports the email address as unverified. Only enable this if you
-trust the identity provider to not let users claim email addresses they
-do not own, otherwise users could take over other users' accounts.</dd>
-<dt><code>OIDC_AUTO_LOGIN</code></dt>
-<dd>Default: <code>False</code>. Set to <code>True</code> to skip the Healthchecks login page and send
-users directly to the identity provider. Note: when the user logs out of
-Healthchecks, but still has an active session with the identity provider,
-they will be logged back in automatically on their next visit.</dd>
-<dt><code>OIDC_SESSION_REFRESH</code></dt>
-<dd>Default: <code>False</code>. Set to <code>True</code> to periodically (every 15 minutes) re-check
-the user's session with the identity provider. This way, users disabled in
-the identity provider lose access to Healthchecks soon after.</dd>
-<dt><code>OIDC_TIMEOUT</code></dt>
-<dd>Default: <code>10</code>. The timeout (in seconds) for requests to the identity provider.</dd>
-<dt><code>OIDC_OP_AUTHORIZATION_ENDPOINT</code>, <code>OIDC_OP_TOKEN_ENDPOINT</code>, <code>OIDC_OP_USER_ENDPOINT</code>, <code>OIDC_OP_JWKS_ENDPOINT</code></dt>
-<dd>Optional. Explicitly specify the identity provider's endpoints. If all four are
-set, Healthchecks does not use the <code>/.well-known/openid-configuration</code> document.</dd>
-</dl>
+<p>To set it up, register Healthchecks as a confidential client at the identity
+provider, and use <code>SITE_ROOT/oidc/callback/</code> as the redirect URI. For example, if
+<code>SITE_ROOT</code> is <code>https://hc.example.org</code>, the redirect URI is
+<code>https://hc.example.org/oidc/callback/</code>. Then set <code>OIDC_PROVIDER_URL</code>,
+<a href="#OIDC_CLIENT_ID">OIDC_CLIENT_ID</a> and <a href="#OIDC_CLIENT_SECRET">OIDC_CLIENT_SECRET</a>.</p>
+<p>The client must be allowed to request the <code>email</code> scope, and users need an email
+address at the identity provider. If <code>OIDC_PROVIDER_URL</code> is set, but
+<code>OIDC_CLIENT_ID</code> or <code>OIDC_CLIENT_SECRET</code> is missing, or
+<a href="#OIDC_RP_SCOPES">OIDC_RP_SCOPES</a> does not include <code>email</code>, Healthchecks shows a
+warning on startup. If the identity provider does not send the required claims,
+Healthchecks rejects the login and logs the reason.</p>
+<h2 id="OIDC_RP_SCOPES"><code>OIDC_RP_SCOPES</code></h2>
+<p>Default: <code>openid email</code></p>
+<p>The scopes Healthchecks requests from the identity provider, separated by spaces.
+Must include <code>openid</code> and <code>email</code>. Add further scopes if
+<a href="#OIDC_ADMIN_CLAIM">OIDC_ADMIN_CLAIM</a> needs them, for example,
+<code>openid email groups</code>.</p>
+<h2 id="OIDC_RP_SIGN_ALGO"><code>OIDC_RP_SIGN_ALGO</code></h2>
+<p>Default: <code>RS256</code></p>
+<p>The algorithm the identity provider uses to sign ID tokens.</p>
+<h2 id="OIDC_SESSION_REFRESH"><code>OIDC_SESSION_REFRESH</code></h2>
+<p>Default: <code>False</code></p>
+<p>A boolean that controls whether Healthchecks periodically (every 15 minutes)
+re-checks the sessions of single sign-on users with the identity provider. If
+enabled, users who are disabled at the identity provider lose access to
+Healthchecks soon after.</p>
+<h2 id="OIDC_TIMEOUT"><code>OIDC_TIMEOUT</code></h2>
+<p>Default: <code>10</code></p>
+<p>The timeout (in seconds) for requests from Healthchecks to the identity provider.</p>
+<h2 id="OIDC_TOKEN_USE_BASIC_AUTH"><code>OIDC_TOKEN_USE_BASIC_AUTH</code></h2>
+<p>Default: <code>False</code></p>
+<p>A boolean that controls how Healthchecks sends the client credentials to the
+identity provider's token endpoint. By default, it sends them in the POST body.
+Set it to <code>True</code> to use HTTP Basic authentication instead.</p>
+<h2 id="OIDC_USE_PKCE"><code>OIDC_USE_PKCE</code></h2>
+<p>Default: <code>False</code></p>
+<p>A boolean that turns on/off PKCE (Proof Key for Code Exchange) for the
+authorization requests.</p>
 <h2 id="OPSGENIE_ENABLED"><code>OPSGENIE_ENABLED</code></h2>
 <p>Default: <code>True</code></p>
 <p>A boolean that turns on/off the Opsgenie integration. Enabled by default.</p>

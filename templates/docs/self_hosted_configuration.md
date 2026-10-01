@@ -47,7 +47,27 @@ from environment variables. Below is a list of environment variables it reads an
 <li><a href="#MSTEAMS_ENABLED">MSTEAMS_ENABLED</a></li>
 <li><a href="#NTFY_SH_TOKEN">NTFY_SH_TOKEN</a></li>
 <li><a href="#NTFY_SH_TOKEN_FILE">NTFY_SH_TOKEN_FILE</a></li>
+<li><a href="#OIDC_ADMIN_CLAIM">OIDC_ADMIN_CLAIM</a></li>
+<li><a href="#OIDC_ADMIN_VALUE">OIDC_ADMIN_VALUE</a></li>
+<li><a href="#OIDC_ALLOW_UNVERIFIED_EMAIL">OIDC_ALLOW_UNVERIFIED_EMAIL</a></li>
+<li><a href="#OIDC_AUTO_LOGIN">OIDC_AUTO_LOGIN</a></li>
+<li><a href="#OIDC_CLIENT_ID">OIDC_CLIENT_ID</a></li>
+<li><a href="#OIDC_CLIENT_ID_FILE">OIDC_CLIENT_ID_FILE</a></li>
+<li><a href="#OIDC_CLIENT_SECRET">OIDC_CLIENT_SECRET</a></li>
+<li><a href="#OIDC_CLIENT_SECRET_FILE">OIDC_CLIENT_SECRET_FILE</a></li>
+<li><a href="#OIDC_CREATE_USER">OIDC_CREATE_USER</a></li>
+<li><a href="#OIDC_LINK_BY_EMAIL">OIDC_LINK_BY_EMAIL</a></li>
+<li><a href="#OIDC_OP_AUTHORIZATION_ENDPOINT">OIDC_OP_AUTHORIZATION_ENDPOINT</a></li>
+<li><a href="#OIDC_OP_JWKS_ENDPOINT">OIDC_OP_JWKS_ENDPOINT</a></li>
+<li><a href="#OIDC_OP_TOKEN_ENDPOINT">OIDC_OP_TOKEN_ENDPOINT</a></li>
+<li><a href="#OIDC_OP_USER_ENDPOINT">OIDC_OP_USER_ENDPOINT</a></li>
 <li><a href="#OIDC_PROVIDER_URL">OIDC_PROVIDER_URL</a></li>
+<li><a href="#OIDC_RP_SCOPES">OIDC_RP_SCOPES</a></li>
+<li><a href="#OIDC_RP_SIGN_ALGO">OIDC_RP_SIGN_ALGO</a></li>
+<li><a href="#OIDC_SESSION_REFRESH">OIDC_SESSION_REFRESH</a></li>
+<li><a href="#OIDC_TIMEOUT">OIDC_TIMEOUT</a></li>
+<li><a href="#OIDC_TOKEN_USE_BASIC_AUTH">OIDC_TOKEN_USE_BASIC_AUTH</a></li>
+<li><a href="#OIDC_USE_PKCE">OIDC_USE_PKCE</a></li>
 <li><a href="#OPSGENIE_ENABLED">OPSGENIE_ENABLED</a></li>
 <li><a href="#PAGERTREE_ENABLED">PAGERTREE_ENABLED</a></li>
 <li><a href="#PD_APP_ID">PD_APP_ID</a></li>
@@ -551,6 +571,180 @@ read the contents of the file into the [NTFY_SH_TOKEN](#NTFY_SH_TOKEN) setting.
 If `NTFY_SH_TOKEN` and `NTFY_SH_TOKEN_FILE` are both set, `NTFY_SH_TOKEN_FILE` takes
 precedence.
 
+## `OIDC_ADMIN_CLAIM` {: #OIDC_ADMIN_CLAIM }
+
+Default: `None`
+
+The name of an OpenID Connect claim that controls the user's admin rights. Only
+has an effect if [OIDC_PROVIDER_URL](#OIDC_PROVIDER_URL) is set.
+
+If `OIDC_ADMIN_CLAIM` is set, Healthchecks grants or revokes admin rights
+(the `is_staff` and `is_superuser` flags) on every single sign-on, based on the
+claim's value:
+
+* a boolean claim grants admin rights if it is `true`,
+* a list claim (for example, a list of groups or roles) grants admin rights if it
+  contains [OIDC_ADMIN_VALUE](#OIDC_ADMIN_VALUE),
+* any other claim grants admin rights if it equals
+  [OIDC_ADMIN_VALUE](#OIDC_ADMIN_VALUE),
+* a missing claim revokes admin rights.
+
+A dotted name looks up a nested claim. For example, `realm_access.roles` looks up
+the `roles` list in the `realm_access` claim.
+
+**Important:** In Healthchecks, admin rights are far-reaching. An admin can use the
+Django admin site (with access to all users and their data), and can view and modify
+**all projects, checks and integrations of all users**. Make sure only the intended
+users can get the claim value at the identity provider.
+
+Also note:
+
+* With this setting, the identity provider decides about admin rights, also for
+  existing admin accounts (for example, ones created with
+  `manage.py createsuperuser`). If such an account logs in via single sign-on
+  without the claim, it loses its admin rights.
+* Admin rights are only updated on single sign-on. Logging in with a password or
+  a login link does not change them.
+* Healthchecks reads the claim from the identity provider's userinfo response.
+  Make sure the provider includes the claim there. This may require an additional
+  scope in [OIDC_RP_SCOPES](#OIDC_RP_SCOPES).
+
+Examples:
+
+* Keycloak realm role "hc-admin": `OIDC_ADMIN_CLAIM=realm_access.roles`,
+  `OIDC_ADMIN_VALUE=hc-admin`
+* Group "hc-admins" (Authelia, Authentik, and others):
+  `OIDC_ADMIN_CLAIM=groups`, `OIDC_ADMIN_VALUE=hc-admins`, and add the `groups`
+  scope to `OIDC_RP_SCOPES`
+
+## `OIDC_ADMIN_VALUE` {: #OIDC_ADMIN_VALUE }
+
+Default: `admin`
+
+The claim value that grants admin rights, see
+[OIDC_ADMIN_CLAIM](#OIDC_ADMIN_CLAIM).
+
+## `OIDC_ALLOW_UNVERIFIED_EMAIL` {: #OIDC_ALLOW_UNVERIFIED_EMAIL }
+
+Default: `False`
+
+A boolean that controls whether Healthchecks accepts single sign-on for users
+whose email address the identity provider reports as unverified (the
+`email_verified` claim is `false`). By default, such logins are rejected.
+
+Only enable this if you trust the identity provider to not let users claim email
+addresses they do not own. Otherwise, a user could claim another user's email
+address and take over their (not yet linked) account, see
+[OIDC_LINK_BY_EMAIL](#OIDC_LINK_BY_EMAIL).
+
+## `OIDC_AUTO_LOGIN` {: #OIDC_AUTO_LOGIN }
+
+Default: `False`
+
+A boolean that controls whether the login page redirects to the identity provider
+right away, instead of showing the "Log In with Single Sign-On" button
+and the other login methods. If the single sign-on fails, Healthchecks shows the
+regular login page.
+
+Note: when a user logs out of Healthchecks, but still has an active session with
+the identity provider, they will be logged back in automatically on their next
+visit.
+
+## `OIDC_CLIENT_ID` {: #OIDC_CLIENT_ID }
+
+Default: `None`
+
+The client ID that the identity provider has issued for Healthchecks. Required if
+[OIDC_PROVIDER_URL](#OIDC_PROVIDER_URL) is set.
+
+## `OIDC_CLIENT_ID_FILE` {: #OIDC_CLIENT_ID_FILE }
+
+Default: `None`
+
+If set, must contain a filesystem path pointing to a readable file. Healthchecks will
+read the contents of the file into the [OIDC_CLIENT_ID](#OIDC_CLIENT_ID) setting.
+If `OIDC_CLIENT_ID` and `OIDC_CLIENT_ID_FILE` are both set, `OIDC_CLIENT_ID_FILE`
+takes precedence.
+
+## `OIDC_CLIENT_SECRET` {: #OIDC_CLIENT_SECRET }
+
+Default: `None`
+
+The client secret that the identity provider has issued for Healthchecks. Required
+if [OIDC_PROVIDER_URL](#OIDC_PROVIDER_URL) is set.
+
+## `OIDC_CLIENT_SECRET_FILE` {: #OIDC_CLIENT_SECRET_FILE }
+
+Default: `None`
+
+If set, must contain a filesystem path pointing to a readable file. Healthchecks will
+read the contents of the file into the [OIDC_CLIENT_SECRET](#OIDC_CLIENT_SECRET)
+setting. If `OIDC_CLIENT_SECRET` and `OIDC_CLIENT_SECRET_FILE` are both set,
+`OIDC_CLIENT_SECRET_FILE` takes precedence.
+
+## `OIDC_CREATE_USER` {: #OIDC_CREATE_USER }
+
+Default: `True`
+
+A boolean that controls whether single sign-on creates an account for users
+who do not have a Healthchecks account yet. Set it to `False` to only allow single
+sign-on for users with an existing account.
+
+## `OIDC_LINK_BY_EMAIL` {: #OIDC_LINK_BY_EMAIL }
+
+Default: `True`
+
+A boolean that controls how existing accounts get linked to identities at the
+identity provider.
+
+Healthchecks identifies users by their identity at the provider (the `sub` claim),
+not by their email address. Accounts created via single sign-on are linked to
+the identity right away. When `OIDC_LINK_BY_EMAIL` is enabled, the first single
+sign-on of an existing user links their account with a matching email address.
+From then on, the account is identified by the `sub` claim only: another identity
+claiming the same email address cannot take it over, and changing the email address
+at the identity provider does not affect the login.
+
+Once all existing users have linked their accounts, you can set this to `False`.
+Healthchecks will then only accept already linked accounts and (with
+[OIDC_CREATE_USER](#OIDC_CREATE_USER)) new users.
+
+Administrators can view and remove links in the Django admin site, under
+"OIDC identities". After removing a link, the account gets linked again on its next
+single sign-on. Links are stored per `OIDC_PROVIDER_URL` value, so after changing
+`OIDC_PROVIDER_URL`, all accounts get linked again.
+
+## `OIDC_OP_AUTHORIZATION_ENDPOINT` {: #OIDC_OP_AUTHORIZATION_ENDPOINT }
+
+Default: `None`
+
+The identity provider's authorization endpoint. Healthchecks normally looks it up
+in the provider's `/.well-known/openid-configuration` document. Set this only if
+you need to override the discovered value. If all four `OIDC_OP_*` settings are
+set, Healthchecks does not load the `/.well-known/openid-configuration` document
+at all.
+
+## `OIDC_OP_JWKS_ENDPOINT` {: #OIDC_OP_JWKS_ENDPOINT }
+
+Default: `None`
+
+The identity provider's JWKS endpoint (the `jwks_uri` value). See
+[OIDC_OP_AUTHORIZATION_ENDPOINT](#OIDC_OP_AUTHORIZATION_ENDPOINT).
+
+## `OIDC_OP_TOKEN_ENDPOINT` {: #OIDC_OP_TOKEN_ENDPOINT }
+
+Default: `None`
+
+The identity provider's token endpoint. See
+[OIDC_OP_AUTHORIZATION_ENDPOINT](#OIDC_OP_AUTHORIZATION_ENDPOINT).
+
+## `OIDC_OP_USER_ENDPOINT` {: #OIDC_OP_USER_ENDPOINT }
+
+Default: `None`
+
+The identity provider's userinfo endpoint. See
+[OIDC_OP_AUTHORIZATION_ENDPOINT](#OIDC_OP_AUTHORIZATION_ENDPOINT).
+
 ## `OIDC_PROVIDER_URL` {: #OIDC_PROVIDER_URL }
 
 Default: `None`
@@ -561,8 +755,8 @@ If `OIDC_PROVIDER_URL` is not set, the OpenID Connect support stays completely
 disabled, and none of the other `OIDC_*` settings have any effect.
 
 This feature requires the
-[mozilla-django-oidc](https://pypi.org/project/mozilla-django-oidc/) package. The
-Healthchecks Docker image includes it. If you run Healthchecks without Docker,
+[mozilla-django-oidc](https://pypi.org/project/mozilla-django-oidc/) package. Images
+built from this repository include it. If you run Healthchecks without Docker,
 install it with `pip install mozilla-django-oidc`. To add OpenID Connect support
 to an unmodified upstream Docker image, see `docker/oidc/README.md`.
 
@@ -572,96 +766,75 @@ When `OIDC_PROVIDER_URL` is set, Healthchecks will:
    `OIDC_PROVIDER_URL/.well-known/openid-configuration`
    (and refuse to start if this fails)
  - show a "Log In with Single Sign-On" button on the login page
- - link each user account to the user's identity at the provider (the `sub` claim):
-   on the first single sign-on, Healthchecks links the account with a matching
-   email address. From then on, it identifies the account by the `sub` claim only,
-   so another identity claiming the same email address cannot take it over
- - automatically create a user account if it does not exist
-   (unless `OIDC_CREATE_USER` is set to `False`)
- - reject logins where the provider reports the email address as unverified
-   (`email_verified` claim is `false`), unless `OIDC_ALLOW_UNVERIFIED_EMAIL`
-   is set to `True`
+   (or redirect there right away, see [OIDC_AUTO_LOGIN](#OIDC_AUTO_LOGIN))
+ - identify users by their identity at the provider (the `sub` claim), and link
+   existing accounts on their first single sign-on, see
+   [OIDC_LINK_BY_EMAIL](#OIDC_LINK_BY_EMAIL)
+ - automatically create a user account if it does not exist, see
+   [OIDC_CREATE_USER](#OIDC_CREATE_USER)
+ - reject logins where the provider reports the email address as unverified, see
+   [OIDC_ALLOW_UNVERIFIED_EMAIL](#OIDC_ALLOW_UNVERIFIED_EMAIL)
+ - optionally grant or revoke admin rights based on a claim, see
+   [OIDC_ADMIN_CLAIM](#OIDC_ADMIN_CLAIM)
  - keep the other login methods (login link to email, password) enabled
 
-If `OIDC_PROVIDER_URL` is set, but `OIDC_CLIENT_ID` or `OIDC_CLIENT_SECRET` is
-missing, or `OIDC_RP_SCOPES` does not include `email`, Healthchecks will show a
-warning on startup.
+To set it up, register Healthchecks as a confidential client at the identity
+provider, and use `SITE_ROOT/oidc/callback/` as the redirect URI. For example, if
+`SITE_ROOT` is `https://hc.example.org`, the redirect URI is
+`https://hc.example.org/oidc/callback/`. Then set `OIDC_PROVIDER_URL`,
+[OIDC_CLIENT_ID](#OIDC_CLIENT_ID) and [OIDC_CLIENT_SECRET](#OIDC_CLIENT_SECRET).
 
-In your identity provider, register Healthchecks as a confidential client and
-use `SITE_ROOT/oidc/callback/` as the redirect URI. For example, if `SITE_ROOT` is
-`https://hc.example.org`, the redirect URI is `https://hc.example.org/oidc/callback/`.
+The client must be allowed to request the `email` scope, and users need an email
+address at the identity provider. If `OIDC_PROVIDER_URL` is set, but
+`OIDC_CLIENT_ID` or `OIDC_CLIENT_SECRET` is missing, or
+[OIDC_RP_SCOPES](#OIDC_RP_SCOPES) does not include `email`, Healthchecks shows a
+warning on startup. If the identity provider does not send the required claims,
+Healthchecks rejects the login and logs the reason.
 
-The following additional settings are available:
+## `OIDC_RP_SCOPES` {: #OIDC_RP_SCOPES }
 
-`OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`
-:   The client ID and client secret issued by the identity provider.
-    You can also use `OIDC_CLIENT_ID_FILE` and `OIDC_CLIENT_SECRET_FILE` to read the
-    values from files.
+Default: `openid email`
 
-`OIDC_RP_SIGN_ALGO`
-:   Default: `RS256`. The algorithm the identity provider uses to sign ID tokens.
+The scopes Healthchecks requests from the identity provider, separated by spaces.
+Must include `openid` and `email`. Add further scopes if
+[OIDC_ADMIN_CLAIM](#OIDC_ADMIN_CLAIM) needs them, for example,
+`openid email groups`.
 
-`OIDC_RP_SCOPES`
-:   Default: `openid email`. The scopes to request. Must include `email`.
+## `OIDC_RP_SIGN_ALGO` {: #OIDC_RP_SIGN_ALGO }
 
-`OIDC_TOKEN_USE_BASIC_AUTH`
-:   Default: `False`. Set to `True` to send the client credentials to the token
-    endpoint using HTTP Basic authentication instead of in the POST body.
+Default: `RS256`
 
-`OIDC_USE_PKCE`
-:   Default: `False`. Set to `True` to use PKCE (Proof Key for Code Exchange).
+The algorithm the identity provider uses to sign ID tokens.
 
-`OIDC_CREATE_USER`
-:   Default: `True`. Set to `False` to only allow single sign-on for users
-    who already have a Healthchecks account.
+## `OIDC_SESSION_REFRESH` {: #OIDC_SESSION_REFRESH }
 
-`OIDC_LINK_BY_EMAIL`
-:   Default: `True`. Controls whether the first single sign-on of an existing user
-    links their account by email address. Once all existing users have linked
-    their accounts, you can set this to `False` to only accept already linked
-    accounts (and, with `OIDC_CREATE_USER`, new users). Administrators can view
-    and remove links in the Django admin site, under "OIDC identities". Links
-    are stored per `OIDC_PROVIDER_URL` value, so after changing it, accounts get
-    linked again.
+Default: `False`
 
-`OIDC_ADMIN_CLAIM`
-:   Default: `None`. The name of a claim that controls admin rights (access to the
-    Django admin site). If set, Healthchecks grants or revokes admin rights on every
-    single sign-on, based on the claim. A dotted name looks up a nested claim, for
-    example, `realm_access.roles` for Keycloak realm roles. The user is an admin if
-    the claim is `true` (boolean claim), contains `OIDC_ADMIN_VALUE` (list claim),
-    or equals `OIDC_ADMIN_VALUE` (any other claim). A missing claim means
-    "not an admin", so with this setting, the identity provider decides about admin
-    rights also for existing admins. The claim must be part of the provider's
-    userinfo response, which may require an additional scope in `OIDC_RP_SCOPES`.
+A boolean that controls whether Healthchecks periodically (every 15 minutes)
+re-checks the sessions of single sign-on users with the identity provider. If
+enabled, users who are disabled at the identity provider lose access to
+Healthchecks soon after.
 
-`OIDC_ADMIN_VALUE`
-:   Default: `admin`. The claim value that grants admin rights, see
-    `OIDC_ADMIN_CLAIM`.
+## `OIDC_TIMEOUT` {: #OIDC_TIMEOUT }
 
-`OIDC_ALLOW_UNVERIFIED_EMAIL`
-:   Default: `False`. Set to `True` to also accept logins where the identity
-    provider reports the email address as unverified. Only enable this if you
-    trust the identity provider to not let users claim email addresses they
-    do not own, otherwise users could take over other users' accounts.
+Default: `10`
 
-`OIDC_AUTO_LOGIN`
-:   Default: `False`. Set to `True` to skip the Healthchecks login page and send
-    users directly to the identity provider. Note: when the user logs out of
-    Healthchecks, but still has an active session with the identity provider,
-    they will be logged back in automatically on their next visit.
+The timeout (in seconds) for requests from Healthchecks to the identity provider.
 
-`OIDC_SESSION_REFRESH`
-:   Default: `False`. Set to `True` to periodically (every 15 minutes) re-check
-    the user's session with the identity provider. This way, users disabled in
-    the identity provider lose access to Healthchecks soon after.
+## `OIDC_TOKEN_USE_BASIC_AUTH` {: #OIDC_TOKEN_USE_BASIC_AUTH }
 
-`OIDC_TIMEOUT`
-:   Default: `10`. The timeout (in seconds) for requests to the identity provider.
+Default: `False`
 
-`OIDC_OP_AUTHORIZATION_ENDPOINT`, `OIDC_OP_TOKEN_ENDPOINT`, `OIDC_OP_USER_ENDPOINT`, `OIDC_OP_JWKS_ENDPOINT`
-:   Optional. Explicitly specify the identity provider's endpoints. If all four are
-    set, Healthchecks does not use the `/.well-known/openid-configuration` document.
+A boolean that controls how Healthchecks sends the client credentials to the
+identity provider's token endpoint. By default, it sends them in the POST body.
+Set it to `True` to use HTTP Basic authentication instead.
+
+## `OIDC_USE_PKCE` {: #OIDC_USE_PKCE }
+
+Default: `False`
+
+A boolean that turns on/off PKCE (Proof Key for Code Exchange) for the
+authorization requests.
 
 ## `OPSGENIE_ENABLED` {: #OPSGENIE_ENABLED }
 
