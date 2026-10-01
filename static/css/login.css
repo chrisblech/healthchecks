@@ -55,7 +55,7 @@
     padding: 8px 0;
 }
 
-#xs-login-sep {
+#xs-login-sep, .xs-login-sep {
     text-align: center;
     margin: 40px;
     font-style: italic;
@@ -65,12 +65,16 @@
     background: #ddd;
 }
 
-#xs-login-sep div {
+#xs-login-sep div, .xs-login-sep div {
     position: relative;
     margin: 0 auto;
     width: 30px;
     top: -9px;
     background: var(--body-bg);
+}
+
+#oidc-login-sep {
+    margin: 40px 0;
 }
 
 #login-password {

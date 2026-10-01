@@ -45,6 +45,7 @@ from environment variables. Below is a list of environment variables it reads an
 <li><a href="#MSTEAMS_ENABLED">MSTEAMS_ENABLED</a></li>
 <li><a href="#NTFY_SH_TOKEN">NTFY_SH_TOKEN</a></li>
 <li><a href="#NTFY_SH_TOKEN_FILE">NTFY_SH_TOKEN_FILE</a></li>
+<li><a href="#OIDC_PROVIDER_URL">OIDC_PROVIDER_URL</a></li>
 <li><a href="#OPSGENIE_ENABLED">OPSGENIE_ENABLED</a></li>
 <li><a href="#PAGERTREE_ENABLED">PAGERTREE_ENABLED</a></li>
 <li><a href="#PD_APP_ID">PD_APP_ID</a></li>
@@ -396,6 +397,75 @@ access token.</p>
 read the contents of the file into the <a href="#NTFY_SH_TOKEN">NTFY_SH_TOKEN</a> setting.
 If <code>NTFY_SH_TOKEN</code> and <code>NTFY_SH_TOKEN_FILE</code> are both set, <code>NTFY_SH_TOKEN_FILE</code> takes
 precedence.</p>
+<h2 id="OIDC_PROVIDER_URL"><code>OIDC_PROVIDER_URL</code></h2>
+<p>Default: <code>None</code></p>
+<p>The base URL of an OpenID Connect identity provider (for example,
+<code>https://login.example.org/</code>). Set this to enable single sign-on via OpenID Connect.
+If <code>OIDC_PROVIDER_URL</code> is not set, the OpenID Connect support stays completely
+disabled, and none of the other <code>OIDC_*</code> settings have any effect.</p>
+<p>This feature requires the
+<a href="https://pypi.org/project/mozilla-django-oidc/">mozilla-django-oidc</a> package. The
+Healthchecks Docker image includes it. If you run Healthchecks without Docker,
+install it with <code>pip install mozilla-django-oidc</code>.</p>
+<p>When <code>OIDC_PROVIDER_URL</code> is set, Healthchecks will:</p>
+<ul>
+<li>on startup, load the provider's endpoints from
+   <code>OIDC_PROVIDER_URL/.well-known/openid-configuration</code>
+   (and refuse to start if this fails)</li>
+<li>show a "Log In with Single Sign-On" button on the login page</li>
+<li>log in the user with a matching email address after a successful
+   single sign-on</li>
+<li>automatically create a user account if it does not exist
+   (unless <code>OIDC_CREATE_USER</code> is set to <code>False</code>)</li>
+<li>reject logins where the provider reports the email address as unverified
+   (<code>email_verified</code> claim is <code>false</code>), unless <code>OIDC_ALLOW_UNVERIFIED_EMAIL</code>
+   is set to <code>True</code></li>
+<li>keep the other login methods (login link to email, password) enabled</li>
+</ul>
+<p>If <code>OIDC_PROVIDER_URL</code> is set, but <code>OIDC_CLIENT_ID</code> or <code>OIDC_CLIENT_SECRET</code> is
+missing, or <code>OIDC_RP_SCOPES</code> does not include <code>email</code>, Healthchecks will show a
+warning on startup.</p>
+<p>In your identity provider, register Healthchecks as a confidential client and
+use <code>SITE_ROOT/oidc/callback/</code> as the redirect URI. For example, if <code>SITE_ROOT</code> is
+<code>https://hc.example.org</code>, the redirect URI is <code>https://hc.example.org/oidc/callback/</code>.</p>
+<p>The following additional settings are available:</p>
+<dl>
+<dt><code>OIDC_CLIENT_ID</code>, <code>OIDC_CLIENT_SECRET</code></dt>
+<dd>The client ID and client secret issued by the identity provider.
+You can also use <code>OIDC_CLIENT_ID_FILE</code> and <code>OIDC_CLIENT_SECRET_FILE</code> to read the
+values from files.</dd>
+<dt><code>OIDC_RP_SIGN_ALGO</code></dt>
+<dd>Default: <code>RS256</code>. The algorithm the identity provider uses to sign ID tokens.</dd>
+<dt><code>OIDC_RP_SCOPES</code></dt>
+<dd>Default: <code>openid email</code>. The scopes to request. Must include <code>email</code>.</dd>
+<dt><code>OIDC_TOKEN_USE_BASIC_AUTH</code></dt>
+<dd>Default: <code>False</code>. Set to <code>True</code> to send the client credentials to the token
+endpoint using HTTP Basic authentication instead of in the POST body.</dd>
+<dt><code>OIDC_USE_PKCE</code></dt>
+<dd>Default: <code>False</code>. Set to <code>True</code> to use PKCE (Proof Key for Code Exchange).</dd>
+<dt><code>OIDC_CREATE_USER</code></dt>
+<dd>Default: <code>True</code>. Set to <code>False</code> to only allow single sign-on for users
+who already have a Healthchecks account with a matching email address.</dd>
+<dt><code>OIDC_ALLOW_UNVERIFIED_EMAIL</code></dt>
+<dd>Default: <code>False</code>. Set to <code>True</code> to also accept logins where the identity
+provider reports the email address as unverified. Only enable this if you
+trust the identity provider to not let users claim email addresses they
+do not own, otherwise users could take over other users' accounts.</dd>
+<dt><code>OIDC_AUTO_LOGIN</code></dt>
+<dd>Default: <code>False</code>. Set to <code>True</code> to skip the Healthchecks login page and send
+users directly to the identity provider. Note: when the user logs out of
+Healthchecks, but still has an active session with the identity provider,
+they will be logged back in automatically on their next visit.</dd>
+<dt><code>OIDC_SESSION_REFRESH</code></dt>
+<dd>Default: <code>False</code>. Set to <code>True</code> to periodically (every 15 minutes) re-check
+the user's session with the identity provider. This way, users disabled in
+the identity provider lose access to Healthchecks soon after.</dd>
+<dt><code>OIDC_TIMEOUT</code></dt>
+<dd>Default: <code>10</code>. The timeout (in seconds) for requests to the identity provider.</dd>
+<dt><code>OIDC_OP_AUTHORIZATION_ENDPOINT</code>, <code>OIDC_OP_TOKEN_ENDPOINT</code>, <code>OIDC_OP_USER_ENDPOINT</code>, <code>OIDC_OP_JWKS_ENDPOINT</code></dt>
+<dd>Optional. Explicitly specify the identity provider's endpoints. If all four are
+set, Healthchecks does not use the <code>/.well-known/openid-configuration</code> document.</dd>
+</dl>
 <h2 id="OPSGENIE_ENABLED"><code>OPSGENIE_ENABLED</code></h2>
 <p>Default: <code>True</code></p>
 <p>A boolean that turns on/off the Opsgenie integration. Enabled by default.</p>

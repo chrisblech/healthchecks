@@ -29,6 +29,25 @@
         </div>
         {% endif %}
 
+        {% if oidc_failed %}
+        <div class="alert alert-warning">
+            <p>Single sign-on failed. Please try again or use another login method.</p>
+        </div>
+        {% endif %}
+
+        {% if oidc_login_url %}
+        <div class="row">
+            <div class="col-sm-6 col-sm-offset-3">
+                <a id="oidc-login" href="{{ oidc_login_url }}" class="btn btn-lg btn-primary btn-block">
+                    Log In with Single Sign-On
+                </a>
+            </div>
+            <div class="col-xs-12">
+                <div id="oidc-login-sep" class="xs-login-sep"><div>or</div></div>
+            </div>
+        </div>
+        {% endif %}
+
         <div class="row">
             {% if use_magic_form %}
             <div class="col-sm-6">

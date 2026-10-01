@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 ## v4.5-dev - Unreleased
 
 ### Improvements
+- Add optional single sign-on via OpenID Connect (OIDC_PROVIDER_URL)
 - Fix project invite email template to mangle URLs in project names
 - Fix transfer request email template to mangle URLs in project names
 

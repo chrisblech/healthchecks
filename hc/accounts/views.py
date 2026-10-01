@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import time
 from datetime import timedelta as td
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 from uuid import UUID, uuid4
 
 import pyotp
@@ -187,6 +187,19 @@ def login(request: HttpRequest) -> HttpResponse:
     if request.user.is_authenticated:
         return _redirect_after_login(request)
 
+    oidc_login_url = None
+    if settings.OIDC_PROVIDER_URL:
+        oidc_login_url = reverse("oidc_authentication_init")
+        redirect_url = request.GET.get("next")
+        if redirect_url and _allow_redirect(redirect_url):
+            oidc_login_url += "?" + urlencode({"next": redirect_url})
+
+        # With OIDC_AUTO_LOGIN, skip the login page and go straight to the
+        # identity provider, unless the previous OIDC login attempt failed
+        auto_login = settings.OIDC_AUTO_LOGIN and request.method == "GET"
+        if auto_login and "oidc_failed" not in request.GET:
+            return redirect(oidc_login_url)
+
     bad_link = request.session.pop("bad_link", None)
     ctx = {
         "page": "login",
@@ -197,6 +210,8 @@ def login(request: HttpRequest) -> HttpResponse:
         "support_email": settings.SUPPORT_EMAIL,
         "account_closed": "account-closed" in request.GET,
         "use_magic_form": bool(settings.MAILERS),
+        "oidc_login_url": oidc_login_url,
+        "oidc_failed": "oidc_failed" in request.GET,
     }
     return render(request, "accounts/login.html", ctx)
 

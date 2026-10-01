@@ -50,3 +50,6 @@ urlpatterns = [
     path(prefix, include("hc.integrations.whatsapp.urls")),
     path(prefix, include("hc.integrations.zulip.urls")),
 ]
+
+if settings.OIDC_PROVIDER_URL:
+    urlpatterns.append(path(f"{prefix}oidc/", include("mozilla_django_oidc.urls")))

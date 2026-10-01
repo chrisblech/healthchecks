@@ -32,3 +32,42 @@ class SystemChecksCase(BaseTestCase):
     def test_it_checks_apprise_and_private_ips(self) -> None:
         ids = [item.id for item in settings_check(None, None)]
         self.assertEqual(ids, ["hc.api.W006"])
+
+    @override_settings(
+        OIDC_PROVIDER_URL="https://login.example.org",
+        OIDC_RP_CLIENT_ID="client-id",
+        OIDC_RP_CLIENT_SECRET="client-secret",
+        OIDC_RP_SCOPES="openid email",
+    )
+    def test_it_accepts_complete_oidc_configuration(self) -> None:
+        self.assertEqual(settings_check(None, None), [])
+
+    @override_settings(
+        OIDC_PROVIDER_URL="https://login.example.org",
+        OIDC_RP_CLIENT_ID=None,
+        OIDC_RP_CLIENT_SECRET="client-secret",
+        OIDC_RP_SCOPES="openid email",
+    )
+    def test_it_warns_about_missing_oidc_client_id(self) -> None:
+        ids = [item.id for item in settings_check(None, None)]
+        self.assertEqual(ids, ["hc.api.W007"])
+
+    @override_settings(
+        OIDC_PROVIDER_URL="https://login.example.org",
+        OIDC_RP_CLIENT_ID="client-id",
+        OIDC_RP_CLIENT_SECRET="",
+        OIDC_RP_SCOPES="openid email",
+    )
+    def test_it_warns_about_missing_oidc_client_secret(self) -> None:
+        ids = [item.id for item in settings_check(None, None)]
+        self.assertEqual(ids, ["hc.api.W008"])
+
+    @override_settings(
+        OIDC_PROVIDER_URL="https://login.example.org",
+        OIDC_RP_CLIENT_ID="client-id",
+        OIDC_RP_CLIENT_SECRET="client-secret",
+        OIDC_RP_SCOPES="openid profile",
+    )
+    def test_it_warns_about_missing_oidc_email_scope(self) -> None:
+        ids = [item.id for item in settings_check(None, None)]
+        self.assertEqual(ids, ["hc.api.W009"])

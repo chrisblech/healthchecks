@@ -12,7 +12,7 @@ COPY requirements.txt /tmp
 RUN \
     apt-get update && \
     apt-get install -y build-essential libffi-dev libpq-dev libmariadb-dev libcurl4-openssl-dev pkg-config
-RUN pip wheel --wheel-dir /wheels apprise uwsgi mysqlclient minio==7.2.20 "psycopg[c]" -r /tmp/requirements.txt
+RUN pip wheel --wheel-dir /wheels apprise uwsgi mysqlclient minio==7.2.20 mozilla-django-oidc==5.0.2 "psycopg[c]" -r /tmp/requirements.txt
 
 COPY . /opt/healthchecks/
 RUN \
