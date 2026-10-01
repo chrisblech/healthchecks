@@ -89,7 +89,7 @@ with (BASE_DIR / "CHANGELOG.md").open(encoding="utf-8") as f:
             break
 
 
-INSTALLED_APPS: tuple[str, ...] = (
+INSTALLED_APPS = (
     "hc.accounts",
     "django.contrib.admin",
     "django.contrib.auth",
@@ -290,67 +290,9 @@ else:
 OIDC_PROVIDER_URL = os.getenv("OIDC_PROVIDER_URL", "").removesuffix("/")
 OIDC_AUTO_LOGIN = False
 if OIDC_PROVIDER_URL:
-    from importlib.util import find_spec
+    from hc.accounts.oidc_settings import configure_oidc
 
-    if find_spec("mozilla_django_oidc") is None:
-        msg = "OIDC_PROVIDER_URL is set, but mozilla-django-oidc is not installed"
-        raise ImproperlyConfigured(msg)
-
-    OIDC_RP_CLIENT_ID = envsecret("OIDC_CLIENT_ID")
-    OIDC_RP_CLIENT_SECRET = envsecret("OIDC_CLIENT_SECRET")
-    OIDC_RP_SIGN_ALGO = os.getenv("OIDC_RP_SIGN_ALGO", "RS256")
-    OIDC_RP_SCOPES = os.getenv("OIDC_RP_SCOPES", "openid email")
-    OIDC_TOKEN_USE_BASIC_AUTH = envbool("OIDC_TOKEN_USE_BASIC_AUTH", "False")
-    OIDC_USE_PKCE = envbool("OIDC_USE_PKCE", "False")
-    OIDC_CREATE_USER = envbool("OIDC_CREATE_USER", "True")
-    OIDC_ALLOW_UNVERIFIED_EMAIL = envbool("OIDC_ALLOW_UNVERIFIED_EMAIL", "False")
-    OIDC_AUTO_LOGIN = envbool("OIDC_AUTO_LOGIN", "False")
-    OIDC_TIMEOUT = envint("OIDC_TIMEOUT", "10")
-
-    # Endpoints can be specified explicitly, any missing ones are looked up
-    # via the provider's /.well-known/openid-configuration document
-    _oidc_conf: dict[str, Any] | None = None
-
-    def _oidc_endpoint(setting: str, key: str) -> str:
-        global _oidc_conf
-        if value := os.getenv(setting):
-            return value
-
-        if _oidc_conf is None:
-            import json
-            from urllib.request import urlopen
-
-            url = f"{OIDC_PROVIDER_URL}/.well-known/openid-configuration"
-            try:
-                with urlopen(url, timeout=OIDC_TIMEOUT) as response:
-                    _oidc_conf = json.loads(response.read())
-            except Exception as e:
-                msg = f"Error loading OIDC configuration from {url}: {e}"
-                raise ImproperlyConfigured(msg) from e
-
-        assert _oidc_conf is not None
-        if not (value := _oidc_conf.get(key)):
-            raise ImproperlyConfigured(f"Could not determine {setting}")
-        return str(value)
-
-    OIDC_OP_AUTHORIZATION_ENDPOINT = _oidc_endpoint(
-        "OIDC_OP_AUTHORIZATION_ENDPOINT", "authorization_endpoint"
-    )
-    OIDC_OP_TOKEN_ENDPOINT = _oidc_endpoint("OIDC_OP_TOKEN_ENDPOINT", "token_endpoint")
-    OIDC_OP_USER_ENDPOINT = _oidc_endpoint("OIDC_OP_USER_ENDPOINT", "userinfo_endpoint")
-    OIDC_OP_JWKS_ENDPOINT = _oidc_endpoint("OIDC_OP_JWKS_ENDPOINT", "jwks_uri")
-
-    LOGIN_REDIRECT_URL = f"{_site_root_parts.path}/"
-    LOGIN_REDIRECT_URL_FAILURE = f"{LOGIN_URL}?oidc_failed"
-
-    INSTALLED_APPS += ("mozilla_django_oidc",)
-    AUTHENTICATION_BACKENDS.append("hc.accounts.oidc.OIDCBackend")
-    if envbool("OIDC_SESSION_REFRESH", "False"):
-        _auth_middleware = "django.contrib.auth.middleware.AuthenticationMiddleware"
-        MIDDLEWARE.insert(
-            MIDDLEWARE.index(_auth_middleware) + 1,
-            "mozilla_django_oidc.middleware.SessionRefresh",
-        )
+    configure_oidc(globals())
 
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "static-collected"

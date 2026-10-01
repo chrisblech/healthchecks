@@ -563,7 +563,8 @@ disabled, and none of the other `OIDC_*` settings have any effect.
 This feature requires the
 [mozilla-django-oidc](https://pypi.org/project/mozilla-django-oidc/) package. The
 Healthchecks Docker image includes it. If you run Healthchecks without Docker,
-install it with `pip install mozilla-django-oidc`.
+install it with `pip install mozilla-django-oidc`. To add OpenID Connect support
+to an unmodified upstream Docker image, see `docker/oidc/README.md`.
 
 When `OIDC_PROVIDER_URL` is set, Healthchecks will:
 

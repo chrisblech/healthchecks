@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import time
 from datetime import timedelta as td
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 import pyotp
@@ -189,16 +189,11 @@ def login(request: HttpRequest) -> HttpResponse:
 
     oidc_login_url = None
     if settings.OIDC_PROVIDER_URL:
-        oidc_login_url = reverse("oidc_authentication_init")
-        redirect_url = request.GET.get("next")
-        if redirect_url and _allow_redirect(redirect_url):
-            oidc_login_url += "?" + urlencode({"next": redirect_url})
+        from hc.accounts import oidc
 
-        # With OIDC_AUTO_LOGIN, skip the login page and go straight to the
-        # identity provider, unless the previous OIDC login attempt failed
-        auto_login = settings.OIDC_AUTO_LOGIN and request.method == "GET"
-        if auto_login and "oidc_failed" not in request.GET:
-            return redirect(oidc_login_url)
+        if auto_login_response := oidc.auto_login(request):
+            return auto_login_response
+        oidc_login_url = oidc.login_url(request)
 
     bad_link = request.session.pop("bad_link", None)
     ctx = {

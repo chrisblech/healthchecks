@@ -52,4 +52,4 @@ urlpatterns = [
 ]
 
 if settings.OIDC_PROVIDER_URL:
-    urlpatterns.append(path(f"{prefix}oidc/", include("mozilla_django_oidc.urls")))
+    urlpatterns.append(path(prefix, include("hc.accounts.oidc")))

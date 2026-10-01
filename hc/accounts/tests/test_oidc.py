@@ -3,16 +3,20 @@ from __future__ import annotations
 import importlib.util
 from unittest import skipIf
 
-from django.contrib.auth.models import User
+from django.contrib.auth.models import AnonymousUser, User
+from django.contrib.sessions.backends.db import SessionStore
+from django.http import HttpResponse
+from django.test import RequestFactory
 from django.test.utils import override_settings
 from django.urls import include, path
 
+from hc.accounts.oidc_settings import oidc_check
 from hc.test import BaseTestCase
 
 NO_OIDC = importlib.util.find_spec("mozilla_django_oidc") is None
 
 # Mimic hc/urls.py with OIDC enabled
-urlpatterns = [] if NO_OIDC else [path("oidc/", include("mozilla_django_oidc.urls"))]
+urlpatterns = [] if NO_OIDC else [path("", include("hc.accounts.oidc"))]
 urlpatterns.append(path("", include("hc.urls")))
 
 OIDC_SETTINGS = {
@@ -75,6 +79,30 @@ class OidcLoginTestCase(BaseTestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Single sign-on failed")
 
+    def _login_view(self, url: str) -> HttpResponse:
+        # Calls the login view used by docker/oidc/local_settings.py
+        from hc.accounts import oidc
+
+        request = RequestFactory().get(url)
+        request.user = AnonymousUser()
+        request.session = SessionStore()
+        return oidc.login(request)
+
+    @override_settings(OIDC_AUTO_LOGIN=True)
+    def test_upstream_login_view_redirects_to_sso(self) -> None:
+        r = self._login_view("/accounts/login/")
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r["Location"], "/oidc/authenticate/")
+
+    @override_settings(OIDC_AUTO_LOGIN=True)
+    def test_upstream_login_view_falls_back_after_failure(self) -> None:
+        r = self._login_view("/accounts/login/?oidc_failed")
+        self.assertEqual(r.status_code, 200)
+
+    def test_upstream_login_view_shows_login_page(self) -> None:
+        r = self._login_view("/accounts/login/")
+        self.assertEqual(r.status_code, 200)
+
     def test_authenticate_redirects_to_provider(self) -> None:
         r = self.client.get("/oidc/authenticate/")
         self.assertEqual(r.status_code, 302)
@@ -121,3 +149,33 @@ class OidcBackendTestCase(BaseTestCase):
 
     def test_it_requires_email(self) -> None:
         self.assertFalse(self.backend.verify_claims({"sub": "123"}))
+
+
+@override_settings(
+    OIDC_PROVIDER_URL="https://login.example.org",
+    OIDC_RP_CLIENT_ID="client-id",
+    OIDC_RP_CLIENT_SECRET="client-secret",
+    OIDC_RP_SCOPES="openid email",
+)
+class OidcSystemCheckTestCase(BaseTestCase):
+    def test_it_accepts_complete_configuration(self) -> None:
+        self.assertEqual(oidc_check(), [])
+
+    @override_settings(OIDC_PROVIDER_URL="")
+    def test_it_does_nothing_when_disabled(self) -> None:
+        self.assertEqual(oidc_check(), [])
+
+    @override_settings(OIDC_RP_CLIENT_ID=None)
+    def test_it_warns_about_missing_client_id(self) -> None:
+        ids = [item.id for item in oidc_check()]
+        self.assertEqual(ids, ["hc.accounts.W001"])
+
+    @override_settings(OIDC_RP_CLIENT_SECRET="")
+    def test_it_warns_about_missing_client_secret(self) -> None:
+        ids = [item.id for item in oidc_check()]
+        self.assertEqual(ids, ["hc.accounts.W002"])
+
+    @override_settings(OIDC_RP_SCOPES="openid profile")
+    def test_it_warns_about_missing_email_scope(self) -> None:
+        ids = [item.id for item in oidc_check()]
+        self.assertEqual(ids, ["hc.accounts.W003"])

@@ -14,7 +14,7 @@ class ApiConfig(AppConfig):
     name = "hc.api"
 
 
-@register()  # W001, W002, W005, W006, W007, W008, W009, E002, E003
+@register()  # W001, W002, W005, E002, E003
 def settings_check(
     app_configs: Sequence[AppConfig] | None,
     databases: Sequence[str] | None,
@@ -78,35 +78,6 @@ def settings_check(
                 id="hc.api.W006",
             )
         )
-
-    if settings.OIDC_PROVIDER_URL:
-        oidc_hint = "See https://healthchecks.io/docs/self_hosted_configuration/#OIDC_PROVIDER_URL"
-        if not getattr(settings, "OIDC_RP_CLIENT_ID", None):
-            items.append(
-                Warning(
-                    "OIDC_PROVIDER_URL is set but OIDC_CLIENT_ID is missing",
-                    hint=oidc_hint,
-                    id="hc.api.W007",
-                )
-            )
-
-        if not getattr(settings, "OIDC_RP_CLIENT_SECRET", None):
-            items.append(
-                Warning(
-                    "OIDC_PROVIDER_URL is set but OIDC_CLIENT_SECRET is missing",
-                    hint=oidc_hint,
-                    id="hc.api.W008",
-                )
-            )
-
-        if "email" not in getattr(settings, "OIDC_RP_SCOPES", "").split():
-            items.append(
-                Warning(
-                    "OIDC_RP_SCOPES does not include the 'email' scope",
-                    hint="Healthchecks needs the user's email address to log them in",
-                    id="hc.api.W009",
-                )
-            )
 
     return items
 
