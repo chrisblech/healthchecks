@@ -1,0 +1,58 @@
+# Example stack (e.g. for Portainer): the unmodified upstream Healthchecks image
+# with the OIDC add-on. To update Healthchecks, only change the "web" image tag.
+# See README.md for details.
+
+volumes:
+  db-data:
+  oidc-addon:
+
+services:
+  db:
+    image: postgres:16
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=hc
+      - POSTGRES_PASSWORD=change-me
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+
+  # One-shot container: copies the add-on into the "oidc-addon" volume, then exits.
+  # Pin a released version, see README.md
+  oidc-addon:
+    image: ghcr.io/chrisblech/healthchecks-oidc-addon:1.0.0
+    volumes:
+      - oidc-addon:/target
+    restart: "no"
+
+  web:
+    image: healthchecks/healthchecks:v4.4
+    depends_on:
+      db:
+        condition: service_healthy
+      oidc-addon:
+        condition: service_completed_successfully
+    volumes:
+      - oidc-addon:/opt/oidc:ro
+    environment:
+      # Activate the add-on
+      - PYTHONPATH=/opt/oidc
+      - DJANGO_SETTINGS_MODULE=hc_oidc.settings
+      # OIDC configuration, see README.md
+      - OIDC_PROVIDER_URL=https://login.example.org/
+      - OIDC_CLIENT_ID=healthchecks
+      - OIDC_CLIENT_SECRET=change-me
+      # Regular Healthchecks configuration
+      - DB=postgres
+      - DB_HOST=db
+      - DB_NAME=hc
+      - DB_USER=postgres
+      - DB_PASSWORD=change-me
+      - SECRET_KEY=change-me
+      - SITE_ROOT=https://hc.example.org
+      - ALLOWED_HOSTS=hc.example.org
+      - DEBUG=False
+    ports:
+      - "8000:8000"
+    restart: unless-stopped

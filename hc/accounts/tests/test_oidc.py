@@ -1,16 +1,21 @@
 from __future__ import annotations
 
 import importlib.util
+from typing import Any
 from unittest import skipIf
+from unittest.mock import patch
 
 from django.contrib.auth.models import AnonymousUser, User
 from django.contrib.sessions.backends.db import SessionStore
+from django.core.exceptions import ImproperlyConfigured
 from django.http import HttpResponse
 from django.test import RequestFactory
 from django.test.utils import override_settings
 from django.urls import include, path
 
-from hc.accounts.oidc_settings import oidc_check
+from hc.accounts import oidc_settings
+from hc.accounts.oidc_settings import configure_oidc, oidc_check
+from hc.settings import envbool, envint, envsecret
 from hc.test import BaseTestCase
 
 NO_OIDC = importlib.util.find_spec("mozilla_django_oidc") is None
@@ -179,3 +184,61 @@ class OidcSystemCheckTestCase(BaseTestCase):
     def test_it_warns_about_missing_email_scope(self) -> None:
         ids = [item.id for item in oidc_check()]
         self.assertEqual(ids, ["hc.accounts.W003"])
+
+
+ENV = {
+    "OIDC_PROVIDER_URL": "https://login.example.org/",
+    "OIDC_CLIENT_ID": "client-id",
+    "OIDC_CLIENT_SECRET": "client-secret",
+    "OIDC_OP_AUTHORIZATION_ENDPOINT": "https://login.example.org/auth",
+    "OIDC_OP_TOKEN_ENDPOINT": "https://login.example.org/token",
+    "OIDC_OP_USER_ENDPOINT": "https://login.example.org/userinfo",
+    "OIDC_OP_JWKS_ENDPOINT": "https://login.example.org/jwks",
+}
+
+
+class ConfigureOidcTestCase(BaseTestCase):
+    def _ns(self) -> dict[str, Any]:
+        return {
+            "envbool": envbool,
+            "envint": envint,
+            "envsecret": envsecret,
+            "SITE_ROOT": "https://hc.example.org/sub",
+            "LOGIN_URL": "/sub/accounts/login/",
+            "INSTALLED_APPS": ("hc.accounts",),
+            "AUTHENTICATION_BACKENDS": ["hc.accounts.backends.EmailBackend"],
+            "MIDDLEWARE": ["django.contrib.auth.middleware.AuthenticationMiddleware"],
+        }
+
+    def test_backend_path_follows_package_name(self) -> None:
+        self.assertEqual(oidc_settings.BACKEND, "hc.accounts.oidc.OIDCBackend")
+
+    @patch.dict("os.environ", {"OIDC_PROVIDER_URL": ""})
+    def test_it_does_nothing_without_provider_url(self) -> None:
+        ns = self._ns()
+        self.assertFalse(configure_oidc(ns))
+        self.assertNotIn("OIDC_PROVIDER_URL", ns)
+
+    @skipIf(NO_OIDC, "mozilla-django-oidc is not installed")
+    @patch.dict("os.environ", ENV)
+    def test_it_configures_oidc(self) -> None:
+        ns = self._ns()
+        self.assertTrue(configure_oidc(ns))
+        self.assertEqual(ns["OIDC_PROVIDER_URL"], "https://login.example.org")
+        self.assertEqual(ns["OIDC_RP_CLIENT_ID"], "client-id")
+        self.assertEqual(ns["OIDC_OP_TOKEN_ENDPOINT"], "https://login.example.org/token")
+        self.assertEqual(ns["LOGIN_REDIRECT_URL"], "/sub/")
+        self.assertEqual(ns["LOGIN_REDIRECT_URL_FAILURE"], "/sub/accounts/login/?oidc_failed")
+        self.assertIn("mozilla_django_oidc", ns["INSTALLED_APPS"])
+        self.assertIn(oidc_settings.BACKEND, ns["AUTHENTICATION_BACKENDS"])
+
+        # A second call (e.g., the add-on settings on top of hc/settings.py)
+        # must not configure OIDC twice
+        self.assertFalse(configure_oidc(ns))
+        self.assertEqual(ns["AUTHENTICATION_BACKENDS"].count(oidc_settings.BACKEND), 1)
+
+    @patch.dict("os.environ", ENV)
+    def test_it_reports_missing_packages(self) -> None:
+        with patch.object(oidc_settings, "find_spec", lambda name: None):
+            with self.assertRaisesRegex(ImproperlyConfigured, "requests"):
+                configure_oidc(self._ns())

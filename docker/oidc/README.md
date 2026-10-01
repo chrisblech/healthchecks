@@ -1,74 +1,89 @@
-# OpenID Connect for the Upstream Docker Image
+# OIDC Add-on for the Upstream Docker Image
 
 Images built from this repository support single sign-on via OpenID Connect
 out of the box (see
 [OIDC_PROVIDER_URL](../../templates/docs/self_hosted_configuration.md#OIDC_PROVIDER_URL)).
-This directory shows how to add the same feature to an **unmodified upstream image**
-(`healthchecks/healthchecks`) without rebuilding it.
+This directory provides the same feature as an **add-on for the unmodified upstream
+image** (`healthchecks/healthchecks`). It is meant for deployments that:
 
-The upstream image already contains all dependencies (Django, requests, PyJWT,
-cryptography) except `mozilla-django-oidc` itself. Upstream Healthchecks also loads
-an optional `hc/local_settings.py`. The files mounted into the container are:
+* want to follow upstream releases by only changing the image tag,
+* have no (easy) access to the host filesystem, e.g., stacks managed by Portainer.
 
-| Source (this repository)       | Target in the container                          |
-| ------------------------------ | ------------------------------------------------ |
-| `docker/oidc/local_settings.py`| `/opt/healthchecks/hc/local_settings.py`         |
-| `hc/accounts/oidc.py`          | `/opt/healthchecks/hc/accounts/oidc.py`          |
-| `hc/accounts/oidc_settings.py` | `/opt/healthchecks/hc/accounts/oidc_settings.py` |
-| `mozilla_django_oidc/` package | `/opt/healthchecks/mozilla_django_oidc`          |
+## How It Works
 
-The two `hc/accounts/oidc*.py` files are the same ones the full integration
-uses, so both setups share the same code and environment variables.
+The add-on is a small image (`ghcr.io/chrisblech/healthchecks-oidc-addon`) that runs
+as a one-shot container. It copies its contents into a named volume and exits:
 
-## Option A: Mount Everything (No Build)
-
-Fetch the `mozilla-django-oidc` package once. It is pure Python, so the
-wheel only needs to be unpacked:
-
-```bash
-pip download mozilla-django-oidc==5.0.2 --no-deps -d /tmp/oidc
+```
+/opt/oidc/                      (named volume, mounted read-only into the app)
+├── mozilla_django_oidc/        the mozilla-django-oidc library
+└── hc_oidc/
+    ├── settings.py             docker/oidc/settings.py
+    ├── oidc_settings.py        hc/accounts/oidc_settings.py
+    └── oidc.py                 hc/accounts/oidc.py
 ```
 
-```bash
-python -m zipfile -e /tmp/oidc/mozilla_django_oidc-5.0.2-py3-none-any.whl /tmp/oidc/whl
-```
+The Healthchecks container mounts the volume and gets two environment variables:
 
-Then copy `/tmp/oidc/whl/mozilla_django_oidc` next to your `docker-compose.yml`.
+* `PYTHONPATH=/opt/oidc` makes the add-on importable.
+* `DJANGO_SETTINGS_MODULE=hc_oidc.settings` selects the add-on's settings module.
+  Upstream only sets `hc.settings` as a default, so the environment variable wins.
+
+`hc_oidc.settings` imports all regular settings from `hc.settings`, adds the OIDC
+configuration, and routes requests through its own URL patterns (OIDC URLs plus
+the unmodified `hc.urls`). No file of the Healthchecks image is modified or
+overlaid. `oidc.py` and `oidc_settings.py` are the same files the full integration
+in this repository uses, so both share code, environment variables and behavior.
+
+Consequences:
+
+* **Upstream updates:** change the tag of the Healthchecks image and redeploy.
+  The add-on volume is independent of the app image, nothing needs to be
+  re-injected, and no access to the Docker socket is needed.
+* **Add-on updates:** change the tag of the add-on image and redeploy. The
+  add-on container runs before the app container on every deployment
+  (`depends_on: condition: service_completed_successfully`), and replaces the
+  volume's contents.
+* **No OIDC:** without `OIDC_PROVIDER_URL`, the add-on settings are identical
+  to the regular settings.
+
+## Setup
+
+See [docker-compose.yml](docker-compose.yml) for a complete example stack. The
+relevant parts:
 
 ```yaml
 services:
+  oidc-addon:
+    image: ghcr.io/chrisblech/healthchecks-oidc-addon:1.0.0
+    volumes:
+      - oidc-addon:/target
+    restart: "no"
+
   web:
     image: healthchecks/healthchecks:v4.4
+    depends_on:
+      oidc-addon:
+        condition: service_completed_successfully
+    volumes:
+      - oidc-addon:/opt/oidc:ro
     environment:
+      - PYTHONPATH=/opt/oidc
+      - DJANGO_SETTINGS_MODULE=hc_oidc.settings
       - OIDC_PROVIDER_URL=https://login.example.org/
       - OIDC_CLIENT_ID=healthchecks
-      - OIDC_CLIENT_SECRET_FILE=/run/secrets/oidc_client_secret
-    volumes:
-      - ./healthchecks/docker/oidc/local_settings.py:/opt/healthchecks/hc/local_settings.py:ro
-      - ./healthchecks/hc/accounts/oidc.py:/opt/healthchecks/hc/accounts/oidc.py:ro
-      - ./healthchecks/hc/accounts/oidc_settings.py:/opt/healthchecks/hc/accounts/oidc_settings.py:ro
-      - ./mozilla_django_oidc:/opt/healthchecks/mozilla_django_oidc:ro
+      - OIDC_CLIENT_SECRET=...
+
+volumes:
+  oidc-addon:
 ```
 
-`/opt/healthchecks` is the working directory of uWSGI and `manage.py`, so the
-package is importable from there.
+All `OIDC_*` environment variables are documented in
+[self_hosted_configuration.md](../../templates/docs/self_hosted_configuration.md#OIDC_PROVIDER_URL).
+In the identity provider, use `SITE_ROOT/oidc/callback/` as the redirect URI.
 
-## Option B: Thin Derived Image
-
-To avoid managing the package directory, extend the upstream image with
-one layer and keep mounting (or `COPY`ing) the three `.py` files as shown above:
-
-```dockerfile
-FROM healthchecks/healthchecks:v4.4
-USER root
-RUN pip install --no-cache mozilla-django-oidc==5.0.2
-USER hc
-```
-
-## Differences to the Full Integration
-
-All `OIDC_*` environment variables and the startup warnings work the same.
-Because the upstream templates and views stay unmodified:
+Differences to the full integration, because upstream templates and views stay
+unmodified:
 
 * The login page has no "Log In with Single Sign-On" button. Either set
   `OIDC_AUTO_LOGIN=True` (the login page then redirects to the identity provider),
@@ -76,6 +91,36 @@ Because the upstream templates and views stay unmodified:
 * After a failed single sign-on, the regular login page is shown without an
   error message.
 
-When upgrading the upstream image, check that the mounted files still work
-with the new version: they rely on `hc.accounts.views._make_user`,
-`hc.accounts.views._allow_redirect`, `hc.accounts.views.login` and `hc.urls.prefix`.
+## Building and Publishing the Add-on Image
+
+The GitHub workflow [publish_oidc_addon.yml](../../.github/workflows/publish_oidc_addon.yml)
+builds the image and pushes it to the GitHub Container Registry:
+
+* every push to the `feature/oidc` branch that touches the add-on publishes the
+  `feature-oidc` and `sha-<commit>` tags,
+* pushing a git tag `oidc-addon-vX.Y.Z` publishes the `X.Y.Z` and `latest` tags.
+
+New GHCR packages are private. Either make the package public (GitHub → Packages →
+healthchecks-oidc-addon → Package settings), or add the registry with a token to
+Portainer.
+
+To build the image manually, run this from the repository root:
+
+```bash
+docker build -f docker/oidc/Dockerfile -t healthchecks-oidc-addon .
+```
+
+## Compatibility with Upstream Updates
+
+The add-on relies on a few Healthchecks internals: `hc.settings` (including the
+`envbool`, `envint`, `envsecret` helpers), `hc.urls.prefix`, and
+`_make_user`, `_allow_redirect` and `login` in `hc.accounts.views`. It also expects
+the Healthchecks image to provide `requests`, `PyJWT` and `cryptography`, which
+`mozilla-django-oidc` depends on.
+
+If a new upstream version breaks any of this, Healthchecks refuses to start
+(`manage.py migrate` fails before uWSGI serves requests), with an error message
+that names the problem. Recommended practice:
+
+* pin both image tags (no `latest` in production),
+* try a new upstream tag in a test instance before updating production.

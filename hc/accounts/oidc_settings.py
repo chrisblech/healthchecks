@@ -1,9 +1,13 @@
 """Settings and system checks for the optional OpenID Connect support.
 
 This module is used while the settings are being loaded: either from
-hc/settings.py, or from hc/local_settings.py when adding OIDC support to an
-unmodified Healthchecks image (see docker/oidc/). It must therefore not import
-anything that requires configured settings or a ready app registry.
+hc/settings.py, or from docker/oidc/settings.py when adding OIDC support to an
+unmodified Healthchecks image (see docker/oidc/README.md). It must therefore not
+import anything that requires configured settings or a ready app registry.
+
+It must also not hardcode its own package name: in the add-on for the upstream
+image, it is installed as hc_oidc.oidc_settings instead of
+hc.accounts.oidc_settings.
 
 """
 
@@ -20,7 +24,12 @@ from urllib.request import urlopen
 from django.core.checks import Warning, register
 from django.core.exceptions import ImproperlyConfigured
 
-BACKEND = "hc.accounts.oidc.OIDCBackend"
+# The module with the OIDC backend, views and URL patterns, located next to this one
+OIDC_MODULE = f"{__package__}.oidc"
+BACKEND = f"{OIDC_MODULE}.OIDCBackend"
+# Packages mozilla-django-oidc needs, but which we expect the Healthchecks
+# image to already provide (the add-on installs it with "pip install --no-deps")
+REQUIRED_PACKAGES = ("mozilla_django_oidc", "requests", "jwt", "cryptography")
 ENDPOINTS = {
     "OIDC_OP_AUTHORIZATION_ENDPOINT": "authorization_endpoint",
     "OIDC_OP_TOKEN_ENDPOINT": "token_endpoint",
@@ -52,11 +61,11 @@ def configure_oidc(ns: dict[str, Any]) -> bool:
     """
 
     provider_url = os.getenv("OIDC_PROVIDER_URL", "").removesuffix("/")
-    if not provider_url or BACKEND in ns["AUTHENTICATION_BACKENDS"]:
+    if not provider_url or "mozilla_django_oidc" in ns["INSTALLED_APPS"]:
         return False
 
-    if find_spec("mozilla_django_oidc") is None:
-        msg = "OIDC_PROVIDER_URL is set, but mozilla-django-oidc is not installed"
+    if missing := [pkg for pkg in REQUIRED_PACKAGES if find_spec(pkg) is None]:
+        msg = f"OIDC_PROVIDER_URL is set, but Python packages are missing: {missing}"
         raise ImproperlyConfigured(msg)
 
     envbool, envint, envsecret = ns["envbool"], ns["envint"], ns["envsecret"]
